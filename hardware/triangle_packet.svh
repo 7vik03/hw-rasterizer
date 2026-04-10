@@ -9,11 +9,10 @@ typedef struct packed {
     logic [8:0]  bbox_ymax;
 
     // edge coefficients Q12.12 signed
-    // E_i(x,y) = a_i*x + b_i*y + c_i
     // step x: E_i += a_i   step y: E_i += b_i
-    logic signed [31:0] a0, b0, c0;  // edge 0: v1->v2
-    logic signed [31:0] a1, b1, c1;  // edge 1: v2->v0
-    logic signed [31:0] a2, b2, c2;  // edge 2: v0->v1
+    logic signed [31:0] a0, b0;  // edge 0: v1->v2
+    logic signed [31:0] a1, b1;  // edge 1: v2->v0
+    logic signed [31:0] a2, b2;  // edge 2: v0->v1
 
     // initial edge values at bounding box origin
     // evaluated at pixel center (bbox_xmin+0.5, bbox_ymin+0.5)

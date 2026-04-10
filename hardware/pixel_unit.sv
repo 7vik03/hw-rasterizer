@@ -20,6 +20,10 @@ module pixel_unit (
     logic signed [31:0] z, z_row;
     logic active;
 
+    //TODO: latch packet fields into local regs when we accept a triangle
+    //right now we read packet.a0 etc every cycle while active
+    //if upstream changes packet (FIFO advances to next triangle) we get corrupted data
+
     always_ff @(posedge clk) begin
         if (rst) begin
             active <= 0;
@@ -59,7 +63,10 @@ module pixel_unit (
             if (y == packet.bbox_ymax && x == packet.bbox_xmax) begin
                 active <= 0;
                 ready <= 1;
-                pixel_valid <= 0;
+                //remove pixel_valid <= 0 here bc it kills the
+                //edge test on the final pixel (and 1x1 bbox)
+                //should get cleared at top of active block so shoudl be good?
+                //pixel_valid <= 0;
             end
         end else if (valid_in && ready) begin
             if (packet.front_facing) begin
@@ -78,5 +85,17 @@ module pixel_unit (
             end
         end
     end
+
+
+    //TODO: gonna need RAM for z buffer inside this unit
+    //m10k has 1 cycle read latency
+    //probably means adding an FSM
+    //- compute addr from (x,y), read stored depth from z buffer
+    //- compare read depth vs z[27:12], write if new depth < stored
+
+    //TODO: y-range clipping for parallel pixel units
+    //skip triangle entirely if clipped_ymin > clipped_ymax
+    //also need to adjust e0_init/e1_init/e2_init/z_at_origin for skipped rows
+    //(add b0 * (clipped_ymin - bbox_ymin) etc)
 
 endmodule
