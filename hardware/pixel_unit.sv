@@ -16,6 +16,13 @@ module pixel_unit #(
     output logic ready
 );
 
+    //DONE: pixel_depth slice was z[27:12] which throws away the fractional part
+    //z is Q12.12 and post-perspective-divide depth lives in [0,1)-ish
+    //so the integer bits are mostly zero. keep low bits, put behind localparam
+    //so when SW format changes we only edit one place
+    localparam int Z_MSB = 15;
+    localparam int Z_LSB = 0;
+
     logic [9:0] x;
     logic [8:0] y;
     logic signed [31:0] e0, e1, e2;
@@ -36,19 +43,23 @@ module pixel_unit #(
     logic [7:0] lat_color;
 
     always_ff @(posedge clk) begin
+        //DONE: default pixel_valid to 0 every cycle
+        //before, if the LAST pixel of a triangle was inside, pixel_valid latched high
+        //then active went low and nothing reassigned it -> phantom pixel downstream
+        //hoisting the default kills the bug and lets us drop the explicit clear below
+        pixel_valid <= 0;
+
         if (rst) begin
             active <= 0;
             ready <= 1;
-            pixel_valid <= 0;
         end else if (active) begin
-            pixel_valid <= 0;
 
             if (e0 >= 0 && e1 >= 0 && e2 >= 0) begin
                 pixel_valid <= 1;
                 pixel_x <= x;
                 pixel_y <= y;
                 pixel_color <= lat_color;
-                pixel_depth <= z[27:12];
+                pixel_depth <= z[Z_MSB:Z_LSB];
             end
 
             if (x == lat_bbox_xmax) begin
@@ -76,12 +87,18 @@ module pixel_unit #(
             end
 
         end else if (valid_in && ready) begin
+           //note: if back-facing we just leave ready=1 so FIFO advances next cycle
+           //(might move backface cull to SW later to save FIFO bandwidth)
            if (packet.front_facing) begin
                 logic [8:0] clip_ymin, clip_ymax;
-                logic signed [31:0] skip;
+                //DONE: skip was 32 bits which made b*skip and z_step_y*skip
+                //infer full 32x32 signed DSP cascades. skip is bounded by screen
+                //height (<=240) so 9 bits + sign is plenty -> 32x10 mults, one DSP each.
+                //should help fmax once FIFO+arbiter get wired in
+                logic signed [9:0] skip;
                 clip_ymin = (packet.bbox_ymin > 9'(Y_MIN_CLIP)) ? packet.bbox_ymin : 9'(Y_MIN_CLIP);
                 clip_ymax = (packet.bbox_ymax < 9'(Y_MAX_CLIP)) ? packet.bbox_ymax : 9'(Y_MAX_CLIP);
-                skip = 32'(clip_ymin) - 32'(packet.bbox_ymin);
+                skip = $signed({1'b0, clip_ymin}) - $signed({1'b0, packet.bbox_ymin});
 
                 if (clip_ymin <= clip_ymax) begin
                     lat_bbox_xmin <= packet.bbox_xmin;
@@ -120,11 +137,14 @@ module pixel_unit #(
     //m10k has 1 cycle read latency
     //probably means adding an FSM
     //- compute addr from (x,y), read stored depth from z buffer
-    //- compare read depth vs z[27:12], write if new depth < stored
+    //- compare read depth vs z[Z_MSB:Z_LSB], write if new depth < stored
 
     //DONE: y-range clipping for parallel pixel units
     //skip triangle entirely if clipped_ymin > clipped_ymax
     //also need to adjust e0_init/e1_init/e2_init/z_at_origin for skipped rows
     //(add b0 * (clipped_ymin - bbox_ymin) etc)
+
+    //TODO: confirm Z_MSB/Z_LSB once SW prints actual z range for a test mesh
+    //current guess assumes depth fits in low 16 bits of Q12.12
 
 endmodule
