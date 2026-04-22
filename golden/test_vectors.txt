@@ -1,0 +1,3 @@
+# test_vectors.txt
+# Golden reference vectors from the reference software rasterizer.
+# Format: TBD
