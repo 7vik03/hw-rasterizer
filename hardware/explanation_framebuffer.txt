@@ -1,0 +1,23 @@
+
+
+**Framebuffer module**
+
+The framebuffer module manages the two display memories used for double buffering and handles the swap and clear cycle between frames.
+
+**Memories.** Two separate 8-bit wide arrays `fb_a` and `fb_b` are declared, each holding 76,800 entries (320×240 pixels). Each pixel is stored in RGB332 format — 3 bits red, 3 bits green, 2 bits blue. At any given time one array is the back buffer (being written by the pixel units) and the other is the front buffer (being read by the VGA controller). The `back_buf` bit tracks which is which: when `back_buf = 0`, `fb_a` is back and `fb_b` is front; when `back_buf = 1`, `fb_b` is back and `fb_a` is front.
+
+**Address calculation.** A 2D pixel coordinate `(x, y)` is flattened into a 1D memory address as `y × 320 + x`. This is computed combinationally for both the write port and the read port. The result is 17 bits wide since the maximum address is 76,799.
+
+**Writing pixels.** On every rising clock edge, if `wr_en` is high and the state machine is in `READY`, the incoming color is written to the back buffer at the address corresponding to `(wr_x, wr_y)`. Writes are blocked during the clear pass to prevent racing against the clear logic. The top-level integration module additionally gates `wr_en` with `~clearing` as a second layer of protection.
+
+**Reading pixels.** On every rising clock edge the VGA controller's requested pixel `(rd_x, rd_y)` is looked up in whichever array is currently the front buffer. The output `rd_color` is registered, meaning it is valid one cycle after the address is presented.
+
+**State machine.** The module has three states. On reset it enters `CLEARING_BUF` immediately to guarantee both buffers are clean before the first frame renders.
+
+In `CLEARING_BUF` the module steps through every address from 0 to 76,799, writing `0x00` to the back buffer one address per clock cycle. At 50 MHz this takes approximately 1.5 ms, well within the 33 ms frame budget at 30 fps. The `clearing` output is held high during this pass so the top level knows to suppress pixel unit writes. Once all addresses are zeroed the module transitions to `READY`.
+
+In `READY` the module waits for a `frame_done` pulse from the top level, which is asserted when all pixel units have finished rasterizing the current frame. On receiving this pulse the module flips `back_buf` to swap the front and back buffer roles, asserts `swap_done` for exactly one cycle to notify the pixel units that the swap has occurred, resets `clear_addr` to zero, raises `clearing`, and returns to `CLEARING_BUF` to clean the newly designated back buffer before the next frame begins.
+
+`IDLE` exists as a safe default fallback state and is not entered during normal operation.
+
+**Outputs to the rest of the system.** `swap_done` is a one-cycle pulse that the top-level integration module routes to the pixel units to signal that it is safe to begin writing the next frame. `clearing` tells the top level to gate off pixel unit writes. `buf_id` exposes `back_buf` directly so the top level and pixel units always know which physical buffer is currently back.
