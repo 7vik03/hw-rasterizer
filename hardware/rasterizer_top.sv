@@ -1,9 +1,29 @@
 `include "triangle_packet.svh"
 
-// Top-level integration: HPS-side Avalon-MM decoder feeds the triangle FIFO,
-// dispatcher fans packets to two pixel_units (top and bottom halves), each
-// writes into its own color and depth partition, double-buffered A/B, and
-// VGA reads whichever buffer isn't being written.
+// Top-level integration of the 16-PU systolic rasterizer.
+//
+//   HPS (Avalon-MM)         (existing avalon_interface, owned by Shlok)
+//        |
+//        v  pop / pop_ACK
+//   triangle_dispatcher --(packet broadcast)--> {pu[0]..pu[15]}
+//        |
+//        +-- valid_out[0] --> pu[0].seed_valid_in (the systolic seed start)
+//
+//   pu[i].seed_valid_out --> pu[i+1].seed_valid_in            (chain)
+//   pu[i].seed_e?_out    --> pu[i+1].seed_e?_in
+//   pu[i].seed_z_out     --> pu[i+1].seed_z_in
+//
+// Each PU owns one of 16 column banks (low nibble of screen-x). Their
+// internal framebuffers are the actual pixel storage; this top-level no
+// longer instantiates an external framebuffer module.
+//
+// VGA read path:
+//   vga_framebuffer hands back the (fb_x, fb_y) being scanned this cycle
+//   and a flag indicating the active 256x240 region (vs the 64-pixel
+//   letterbox bars). All 16 PUs see the same vga_r_addr; the high nibble
+//   of fb_x picks the column bank inside one PU, the low nibble picks
+//   *which* PU's read result to mux out. PU read latency is 1 cycle, so
+//   the mux select is registered for one cycle to align.
 
 module rasterizer_top (
     input  logic        clk,
@@ -26,16 +46,9 @@ module rasterizer_top (
     output logic        VGA_SYNC_n
 );
 
-    localparam int N_UNITS = 2;
+    localparam int N_PU = 16;
 
-    // Shlok's avalon_interface presents the pop-side handshake directly;
-    // triangle_fifo is the buffer underneath. Current avalon_interface.sv
-    // signature doesn't expose a push port, so for now we assume the FIFO
-    // lives inside avalon_interface. The standalone triangle_fifo module
-    // stays unused at this level.
-    // TODO: confirm with Shlok whether triangle_fifo should be lifted out
-    // (deeper buffering) or kept internal.
-
+    // ---------------- Avalon / FIFO / dispatcher handshake ----------------
     logic             disp_pop;
     logic             disp_pop_available;
     triangle_packet_t disp_pop_data;
@@ -60,199 +73,175 @@ module rasterizer_top (
         .fifo_level       (fifo_level)
     );
 
-    logic [N_UNITS-1:0] pu_valid_in;
-    triangle_packet_t   pu_packet;
-    logic [N_UNITS-1:0] pu_ready;
+    logic [N_PU-1:0]  pu_valid_seed;
+    triangle_packet_t pu_packet;
+    logic [N_PU-1:0]  pu_ready;
 
-    triangle_dispatcher #(.N(N_UNITS)) u_dispatcher (
+    triangle_dispatcher #(.N_PU(N_PU)) u_dispatcher (
         .clk           (clk),
         .rst           (rst),
         .pop           (disp_pop),
         .pop_available (disp_pop_available),
         .pop_data      (disp_pop_data),
         .pop_ACK       (disp_pop_ACK),
-        .valid_out     (pu_valid_in),
+        .valid_out     (pu_valid_seed),
         .packet_out    (pu_packet),
         .ready_in      (pu_ready)
     );
 
-    // per-partition pixel outputs: index 0 is top half, 1 is bottom half
-    logic [N_UNITS-1:0] pu_pix_valid;
-    logic [9:0]         pu_pix_x     [N_UNITS];
-    logic [8:0]         pu_pix_y     [N_UNITS];
-    logic [7:0]         pu_pix_color [N_UNITS];
-    logic [15:0]        pu_pix_depth [N_UNITS];
+    // The dispatcher broadcasts valid_out across N_PU bits, but in the
+    // systolic layout only valid_out[0] is consumed -- it kicks PU0 off
+    // and the chain fans the seed forward. The other bits dangle.
 
-    pixel_unit #(.Y_MIN_CLIP(0), .Y_MAX_CLIP(119)) u_pixel_top (
-        .clk         (clk),
-        .rst         (rst),
-        .valid_in    (pu_valid_in[0]),
-        .packet      (pu_packet),
-        .pixel_valid (pu_pix_valid[0]),
-        .pixel_x     (pu_pix_x[0]),
-        .pixel_y     (pu_pix_y[0]),
-        .pixel_color (pu_pix_color[0]),
-        .pixel_depth (pu_pix_depth[0]),
-        .ready       (pu_ready[0])
-    );
+    // ---------------- 16 PUs in a systolic chain ----------------
+    logic               chain_seed_valid [N_PU];
+    logic signed [31:0] chain_seed_e0    [N_PU];
+    logic signed [31:0] chain_seed_e1    [N_PU];
+    logic signed [31:0] chain_seed_e2    [N_PU];
+    logic signed [31:0] chain_seed_z     [N_PU];
 
-    pixel_unit #(.Y_MIN_CLIP(120), .Y_MAX_CLIP(239)) u_pixel_bot (
-        .clk         (clk),
-        .rst         (rst),
-        .valid_in    (pu_valid_in[1]),
-        .packet      (pu_packet),
-        .pixel_valid (pu_pix_valid[1]),
-        .pixel_x     (pu_pix_x[1]),
-        .pixel_y     (pu_pix_y[1]),
-        .pixel_color (pu_pix_color[1]),
-        .pixel_depth (pu_pix_depth[1]),
-        .ready       (pu_ready[1])
-    );
+    // PU0's seed comes from the dispatcher (broadcast packet + the
+    // valid_out[0] pulse). Subsequent PUs' seeds are forwarded inside
+    // the generate block.
+    assign chain_seed_valid[0] = pu_valid_seed[0];
+    assign chain_seed_e0[0]    = pu_packet.e0_init;
+    assign chain_seed_e1[0]    = pu_packet.e1_init;
+    assign chain_seed_e2[0]    = pu_packet.e2_init;
+    assign chain_seed_z [0]    = pu_packet.z_at_origin;
 
-    // full-screen linear write addr per partition, y*320 + x.
-    // 320 = 256 + 64 so Quartus turns this into two shifts plus an add.
-    logic [16:0] w_addr [N_UNITS];
+    // VGA-side read fan-out
+    logic [11:0] vga_r_addr;
+    logic        vga_r_buf_sel;
+    logic        fb_write_sel;
+    logic [7:0]  pu_vga_rdata [N_PU];
+
+    // observability: each PU exposes its committed pixel writes; we don't
+    // wire these to anything in the top, but they're useful in the
+    // chain testbench. Aggregate so synthesis doesn't strip them.
+    logic [N_PU-1:0] pu_p_write;
+    logic [7:0]      pu_p_col   [N_PU];
+    logic [7:0]      pu_p_row   [N_PU];
+    logic [7:0]      pu_p_color [N_PU];
+    logic [15:0]     pu_p_depth [N_PU];
+
     genvar gi;
     generate
-        for (gi = 0; gi < N_UNITS; gi++) begin : g_waddr
-            assign w_addr[gi] = 17'(pu_pix_y[gi]) * 17'd320
-                              + 17'(pu_pix_x[gi]);
+        for (gi = 0; gi < N_PU; gi++) begin : g_pu
+            // outgoing seed nets, ignored on the last PU
+            logic               sv_out;
+            logic signed [31:0] se0_out, se1_out, se2_out, sz_out;
+
+            // col_base_in[3:0] must equal PU_ID for memory bank coherence;
+            // achieved when bbox_xmin is 16-aligned (software invariant).
+            logic [7:0] col_base_for_pu;
+            assign col_base_for_pu = pu_packet.bbox_xmin[7:0] + 8'(gi);
+
+            pixel_unit #(
+                .PU_ID      (gi),
+                .IS_LAST_PU ((gi == N_PU - 1) ? 1'b1 : 1'b0)
+            ) u_pu (
+                .clk            (clk),
+                .rst            (rst),
+                .ready          (pu_ready[gi]),
+
+                .seed_valid_in  (chain_seed_valid[gi]),
+                .seed_e0_in     (chain_seed_e0[gi]),
+                .seed_e1_in     (chain_seed_e1[gi]),
+                .seed_e2_in     (chain_seed_e2[gi]),
+                .seed_z_in      (chain_seed_z[gi]),
+
+                .a0_in          (pu_packet.a0),
+                .a1_in          (pu_packet.a1),
+                .a2_in          (pu_packet.a2),
+                .z_step_x_in    (pu_packet.z_step_x),
+                .b0_in          (pu_packet.b0),
+                .b1_in          (pu_packet.b1),
+                .b2_in          (pu_packet.b2),
+                .z_step_y_in    (pu_packet.z_step_y),
+                .color_in       (pu_packet.color),
+                .col_base_in    (col_base_for_pu),
+                .row_base_in    (pu_packet.bbox_ymin[7:0]),
+                .last_row_in    (pu_packet.bbox_ymax[7:0]),
+
+                .seed_valid_out (sv_out),
+                .seed_e0_out    (se0_out),
+                .seed_e1_out    (se1_out),
+                .seed_e2_out    (se2_out),
+                .seed_z_out     (sz_out),
+
+                .p_write        (pu_p_write[gi]),
+                .p_col          (pu_p_col[gi]),
+                .p_row          (pu_p_row[gi]),
+                .p_color        (pu_p_color[gi]),
+                .p_depth        (pu_p_depth[gi]),
+
+                .vga_r_addr     (vga_r_addr),
+                .vga_r_buf_sel  (vga_r_buf_sel),
+                .vga_r_data     (pu_vga_rdata[gi]),
+
+                .fb_write_sel   (fb_write_sel)
+            );
+
+            // wire the systolic chain
+            if (gi < N_PU - 1) begin : g_chain
+                assign chain_seed_valid[gi + 1] = sv_out;
+                assign chain_seed_e0   [gi + 1] = se0_out;
+                assign chain_seed_e1   [gi + 1] = se1_out;
+                assign chain_seed_e2   [gi + 1] = se2_out;
+                assign chain_seed_z    [gi + 1] = sz_out;
+            end
         end
     endgenerate
 
-    // frame_parity = "currently writing to buffer B". Toggles at the end of
-    // each VGA frame so the buffer VGA just finished reading becomes the
-    // next write target. vga_framebuffer doesn't yet expose frame_done;
-    // tie low for now so parity stays at 0 (writes always hit A).
-    // TODO: Srika to add a frame_done output (end-of-field pulse) and wire it.
+    // ---------------- Frame parity / double-buffer toggle ----------------
+    // Toggle which framebuffer the rasterizer writes to (and which one
+    // VGA scans out) at the end of each frame. While VGA is mid-scan a
+    // mid-frame swap would tear, so we wait for vsync.
     logic frame_done;
-    assign frame_done = 1'b0;
-
-    logic frame_parity;
     always_ff @(posedge clk) begin
-        if (rst)             frame_parity <= 1'b0;
-        else if (frame_done) frame_parity <= ~frame_parity;
+        if (rst)             fb_write_sel <= 1'b0;
+        else if (frame_done) fb_write_sel <= ~fb_write_sel;
+    end
+    // VGA always reads the *other* buffer
+    assign vga_r_buf_sel = ~fb_write_sel;
+
+    // ---------------- VGA read mux ----------------
+    logic [7:0] vga_fb_x;
+    logic [7:0] vga_fb_y;
+    logic       vga_in_fb_region;
+    logic [7:0] vga_pixel_in;
+
+    assign vga_r_addr = {vga_fb_x[7:4], vga_fb_y};
+
+    // 1-cycle pipeline so the PU's synchronous read latency matches the
+    // mux select that decodes which PU owns this column.
+    logic [3:0] vga_fb_x_lo_d1;
+    logic       vga_in_fb_region_d1;
+    always_ff @(posedge clk) begin
+        vga_fb_x_lo_d1      <= vga_fb_x[3:0];
+        vga_in_fb_region_d1 <= vga_in_fb_region;
     end
 
-    // per-partition write enables, split A vs B by frame_parity
-    logic [N_UNITS-1:0] fb_a_w_en;
-    logic [N_UNITS-1:0] fb_b_w_en;
-    generate
-        for (gi = 0; gi < N_UNITS; gi++) begin : g_wen
-            assign fb_a_w_en[gi] = pu_pix_valid[gi] & ~frame_parity;
-            assign fb_b_w_en[gi] = pu_pix_valid[gi] &  frame_parity;
-        end
-    endgenerate
-
-    // VGA read side: vga_framebuffer currently owns its own internal memory
-    // and doesn't accept external pixel data. These nets stand in until
-    // Srika extends the interface with (r_addr, r_data) and frame_done.
-    // TODO: mux r_data across the 4 color buffers based on VGA y and
-    // ~frame_parity (read the buffer VGA is displaying, not the one being
-    // written) and route the 4 z buffers similarly if they're ever read.
-    logic [16:0] vga_r_addr;
-    logic [7:0]  fb_a_top_rdata, fb_a_bot_rdata;
-    logic [7:0]  fb_b_top_rdata, fb_b_bot_rdata;
-    assign vga_r_addr = 17'd0;
-
-    framebuffer #(.Y_MIN(0),   .Y_MAX(119), .DATA_W(8)) u_fb_a_top (
-        .w_clk  (clk),
-        .w_en   (fb_a_w_en[0]),
-        .w_addr (w_addr[0]),
-        .w_data (pu_pix_color[0]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (fb_a_top_rdata)
-    );
-
-    framebuffer #(.Y_MIN(120), .Y_MAX(239), .DATA_W(8)) u_fb_a_bot (
-        .w_clk  (clk),
-        .w_en   (fb_a_w_en[1]),
-        .w_addr (w_addr[1]),
-        .w_data (pu_pix_color[1]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (fb_a_bot_rdata)
-    );
-
-    framebuffer #(.Y_MIN(0),   .Y_MAX(119), .DATA_W(8)) u_fb_b_top (
-        .w_clk  (clk),
-        .w_en   (fb_b_w_en[0]),
-        .w_addr (w_addr[0]),
-        .w_data (pu_pix_color[0]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (fb_b_top_rdata)
-    );
-
-    framebuffer #(.Y_MIN(120), .Y_MAX(239), .DATA_W(8)) u_fb_b_bot (
-        .w_clk  (clk),
-        .w_en   (fb_b_w_en[1]),
-        .w_addr (w_addr[1]),
-        .w_data (pu_pix_color[1]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (fb_b_bot_rdata)
-    );
-
-    // Depth buffers: same partitioning, 16 bit data. pixel_unit currently
-    // has no z-buffer read port (see its own TODO), so depth test isn't
-    // wired; we just capture pixel_depth on valid. r_data is unused.
-    // TODO: when pixel_unit gains a z-read FSM, expose r_addr/r_data here.
-    logic [15:0] zb_a_top_rdata, zb_a_bot_rdata;
-    logic [15:0] zb_b_top_rdata, zb_b_bot_rdata;
-
-    framebuffer #(.Y_MIN(0),   .Y_MAX(119), .DATA_W(16)) u_zb_a_top (
-        .w_clk  (clk),
-        .w_en   (fb_a_w_en[0]),
-        .w_addr (w_addr[0]),
-        .w_data (pu_pix_depth[0]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (zb_a_top_rdata)
-    );
-
-    framebuffer #(.Y_MIN(120), .Y_MAX(239), .DATA_W(16)) u_zb_a_bot (
-        .w_clk  (clk),
-        .w_en   (fb_a_w_en[1]),
-        .w_addr (w_addr[1]),
-        .w_data (pu_pix_depth[1]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (zb_a_bot_rdata)
-    );
-
-    framebuffer #(.Y_MIN(0),   .Y_MAX(119), .DATA_W(16)) u_zb_b_top (
-        .w_clk  (clk),
-        .w_en   (fb_b_w_en[0]),
-        .w_addr (w_addr[0]),
-        .w_data (pu_pix_depth[0]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (zb_b_top_rdata)
-    );
-
-    framebuffer #(.Y_MIN(120), .Y_MAX(239), .DATA_W(16)) u_zb_b_bot (
-        .w_clk  (clk),
-        .w_en   (fb_b_w_en[1]),
-        .w_addr (w_addr[1]),
-        .w_data (pu_pix_depth[1]),
-        .r_clk  (clk),
-        .r_addr (vga_r_addr),
-        .r_data (zb_b_bot_rdata)
-    );
+    logic [7:0] muxed_color;
+    assign muxed_color  = pu_vga_rdata[vga_fb_x_lo_d1];
+    assign vga_pixel_in = vga_in_fb_region_d1 ? muxed_color : 8'h00;
 
     vga_framebuffer u_vga (
-        .clk         (clk),
-        .reset       (rst),
-        .VGA_R       (VGA_R),
-        .VGA_G       (VGA_G),
-        .VGA_B       (VGA_B),
-        .VGA_CLK     (VGA_CLK),
-        .VGA_HS      (VGA_HS),
-        .VGA_VS      (VGA_VS),
-        .VGA_BLANK_n (VGA_BLANK_n),
-        .VGA_SYNC_n  (VGA_SYNC_n)
+        .clk            (clk),
+        .reset          (rst),
+        .fb_pixel_color (vga_pixel_in),
+        .fb_x           (vga_fb_x),
+        .fb_y           (vga_fb_y),
+        .in_fb_region   (vga_in_fb_region),
+        .frame_done     (frame_done),
+        .VGA_R          (VGA_R),
+        .VGA_G          (VGA_G),
+        .VGA_B          (VGA_B),
+        .VGA_CLK        (VGA_CLK),
+        .VGA_HS         (VGA_HS),
+        .VGA_VS         (VGA_VS),
+        .VGA_BLANK_n    (VGA_BLANK_n),
+        .VGA_SYNC_n     (VGA_SYNC_n)
     );
 
 endmodule

@@ -1,150 +1,249 @@
 `include "triangle_packet.svh"
 
+// One node of the 16-PU systolic chain.
+//
+// Each instance is hard-bound to one of 16 column banks of the 256x240
+// internal framebuffer: PU `PU_ID` owns screen columns whose low nibble
+// equals PU_ID (cols PU_ID, PU_ID+16, PU_ID+32, ..., PU_ID+240). The
+// dispatcher is responsible for aligning bbox_xmin to a 16-pixel boundary
+// so that col_base_in[3:0] == PU_ID; with that invariant the PU's local
+// memory addresses naturally pack into a 12-bit space (4 col-bank bits |
+// 8 row bits).
+//
+// Seed handoff (the systolic part):
+//   cycle K   PU_i in IDLE, sees seed_valid_in. Latches accumulators and
+//             constants. *On the same edge* registers (seed + a) onto
+//             seed_*_out and pulses seed_valid_out high. This is what
+//             keeps the chain at a 1-cycle stagger: PU_(i+1) sees its
+//             seed at cycle K+1, one column to the right of PU_i.
+//   cycle K+1 PU_i is in ACTIVE for the first time, computes the inside
+//             test for (col_base, row_base), and walks +b every cycle
+//             thereafter until cur_row == last_row, then back to IDLE.
+//
+// The (seed_in + a_in) computation lives on the same clock edge as the
+// IDLE->ACTIVE latch. Since the input is registered upstream and the
+// output is registered locally, the chain has exactly one 32-bit add
+// between flops -- no cascaded combinational adders across PUs.
+//
+// Read-modify-write z-test is pipelined across two cycles using the M10K's
+// two ports: cycle N issues a synchronous read at addr_now and queues the
+// candidate (color, depth, row, inside-flag); cycle N+1 the read result is
+// available, the z compare runs, and the conditional write fires on the
+// other port.
+
 module pixel_unit #(
-    parameter int Y_MIN_CLIP = 0,
-    parameter int Y_MAX_CLIP = 239
+    parameter int  PU_ID       = 0,
+    parameter bit  IS_LAST_PU  = 1'b0,
+    parameter int  FB_DEPTH    = 4096,
+    parameter int  Z_DEPTH     = 4096,
+    parameter int  Z_MSB       = 15,
+    parameter int  Z_LSB       = 0
 ) (
-    input logic clk,
-    input logic rst,
-    input logic valid_in,
-    input triangle_packet_t packet,
-    output logic pixel_valid,
-    output logic [9:0] pixel_x,
-    output logic [8:0] pixel_y,
-    output logic [7:0] pixel_color,
-    output logic [15:0] pixel_depth,
-    output logic ready
+    input  logic               clk,
+    input  logic               rst,
+
+    // high while in IDLE; the dispatcher uses an AND-reduction across all
+    // 16 PUs to know the chain has fully drained before issuing the next
+    // triangle.
+    output logic               ready,
+
+    // ---- systolic seed in (from previous PU, or from dispatcher for PU0) ----
+    input  logic               seed_valid_in,
+    input  logic signed [31:0] seed_e0_in,
+    input  logic signed [31:0] seed_e1_in,
+    input  logic signed [31:0] seed_e2_in,
+    input  logic signed [31:0] seed_z_in,
+
+    // ---- broadcast triangle constants (must be stable across the whole
+    //      triangle; the dispatcher latches them so this is automatic) ----
+    input  logic signed [31:0] a0_in, a1_in, a2_in, z_step_x_in,
+    input  logic signed [31:0] b0_in, b1_in, b2_in, z_step_y_in,
+    input  logic [7:0]         color_in,
+    input  logic [7:0]         col_base_in,
+    input  logic [7:0]         row_base_in,
+    input  logic [7:0]         last_row_in,
+
+    // ---- systolic seed out (to next PU; tied 0 when IS_LAST_PU) ----
+    output logic               seed_valid_out,
+    output logic signed [31:0] seed_e0_out,
+    output logic signed [31:0] seed_e1_out,
+    output logic signed [31:0] seed_e2_out,
+    output logic signed [31:0] seed_z_out,
+
+    // ---- observability of the actual write port (post z-test) ----
+    output logic               p_write,
+    output logic [7:0]         p_col,
+    output logic [7:0]         p_row,
+    output logic [7:0]         p_color,
+    output logic [15:0]        p_depth,
+
+    // ---- VGA read port: 12-bit local addr; vga_r_buf_sel picks which
+    //      framebuffer is being scanned out (the one not being written). ----
+    input  logic [11:0]        vga_r_addr,
+    input  logic               vga_r_buf_sel,
+    output logic [7:0]         vga_r_data,
+
+    // 0 -> rasterizer writes go to FB_A; 1 -> writes go to FB_B
+    input  logic               fb_write_sel
 );
 
-    //DONE: pixel_depth slice was z[27:12] which throws away the fractional part
-    //z is Q12.12 and post-perspective-divide depth lives in [0,1)-ish
-    //so the integer bits are mostly zero. keep low bits, put behind localparam
-    //so when SW format changes we only edit one place
-    localparam int Z_MSB = 15;
-    localparam int Z_LSB = 0;
+    typedef enum logic { S_IDLE, S_ACTIVE } state_t;
+    state_t state;
 
-    logic [9:0] x;
-    logic [8:0] y;
-    logic signed [31:0] e0, e1, e2;
-    logic signed [31:0] e0_row, e1_row, e2_row;
-    logic signed [31:0] z, z_row;
-    logic active;
+    // ---- latched per-triangle constants ----
+    logic signed [31:0] a0_q, a1_q, a2_q, z_step_x_q;
+    logic signed [31:0] b0_q, b1_q, b2_q, z_step_y_q;
+    logic [7:0]         color_q, col_base_q, row_base_q, last_row_q;
 
-    //DONE: latch packet fields into local regs when we accept a triangle
-    //right now we read packet.a0 etc every cycle while active
-    //if upstream changes packet (FIFO advances to next triangle) we get corrupted data
+    // ---- walk accumulators, advanced once per ACTIVE cycle ----
+    logic signed [31:0] e0, e1, e2, z;
+    logic [7:0]         cur_row;
 
-    //latched packet fields - copied on accept so upstream fifo can move on
-    logic [9:0] lat_bbox_xmin, lat_bbox_xmax;
-    logic [8:0] lat_clip_ymin, lat_clip_ymax;
-    logic signed [31:0] lat_a0, lat_a1, lat_a2;
-    logic signed [31:0] lat_b0, lat_b1, lat_b2;
-    logic signed [31:0] lat_z_step_x, lat_z_step_y;
-    logic [7:0] lat_color;
+    assign ready = (state == S_IDLE);
+
+    // Pineda inside-test: a pixel is in the triangle iff all three edge
+    // functions are >= 0. We test the sign bit so the inference is one
+    // 3-input AND of inverted MSBs, no full comparators.
+    logic inside_now;
+    assign inside_now = (state == S_ACTIVE)
+                      && (e0[31] == 1'b0)
+                      && (e1[31] == 1'b0)
+                      && (e2[31] == 1'b0);
+
+    // 12-bit local memory address: high nibble of screen-x picks the
+    // column bank inside this PU; low byte is the row.
+    logic [11:0] addr_now;
+    assign addr_now = {col_base_q[7:4], cur_row};
+
+    // ---- read pipeline registers (cycle N -> cycle N+1) ----
+    logic        q_valid;
+    logic        q_inside;
+    logic [11:0] q_addr;
+    logic [7:0]  q_col, q_row, q_color;
+    logic [15:0] q_z;
+
+    // ---- Z-buffer: 16-bit x 4096, single buffered ----
+    // (* ramstyle = "M10K", max_depth = 512 *) forces Quartus to a 16x512
+    // configuration, so the 4096-deep array is implemented as 8 chained
+    // M10Ks instead of one wide LUT-RAM block.
+    (* ramstyle = "M10K", max_depth = 512 *)
+    logic [15:0] z_mem [Z_DEPTH];
+
+    logic [15:0] z_rd;
+
+    // ---- color framebuffers: 8-bit x 4096, double buffered ----
+    // 8x1024 inference -> 4 chained M10Ks per buffer (8 total per PU FB pair).
+    (* ramstyle = "M10K", max_depth = 1024 *)
+    logic [7:0]  fb_a_mem [FB_DEPTH];
+    (* ramstyle = "M10K", max_depth = 1024 *)
+    logic [7:0]  fb_b_mem [FB_DEPTH];
+
+    logic [7:0]  fb_a_rd, fb_b_rd;
+
+    // smaller-depth wins (Q12.12 z, low-bits-up). Combinational so the
+    // write decision lands on the same edge as the FB write.
+    logic z_pass;
+    assign z_pass = q_valid && q_inside && (q_z < z_rd);
 
     always_ff @(posedge clk) begin
-        //DONE: default pixel_valid to 0 every cycle
-        //before, if the LAST pixel of a triangle was inside, pixel_valid latched high
-        //then active went low and nothing reassigned it -> phantom pixel downstream
-        //hoisting the default kills the bug and lets us drop the explicit clear below
-        pixel_valid <= 0;
+        // sequential defaults so we don't latch pulse signals
+        seed_valid_out <= 1'b0;
+        p_write        <= 1'b0;
+        q_valid        <= 1'b0;
 
         if (rst) begin
-            active <= 0;
-            ready <= 1;
-        end else if (active) begin
+            state   <= S_IDLE;
+            cur_row <= '0;
+        end else begin
+            unique case (state)
+                S_IDLE: begin
+                    if (seed_valid_in) begin
+                        // latch seed accumulators
+                        e0 <= seed_e0_in;
+                        e1 <= seed_e1_in;
+                        e2 <= seed_e2_in;
+                        z  <= seed_z_in;
 
-            if (e0 >= 0 && e1 >= 0 && e2 >= 0) begin
-                pixel_valid <= 1;
-                pixel_x <= x;
-                pixel_y <= y;
-                pixel_color <= lat_color;
-                pixel_depth <= z[Z_MSB:Z_LSB];
-            end
+                        // latch triangle constants
+                        a0_q       <= a0_in;
+                        a1_q       <= a1_in;
+                        a2_q       <= a2_in;
+                        z_step_x_q <= z_step_x_in;
+                        b0_q       <= b0_in;
+                        b1_q       <= b1_in;
+                        b2_q       <= b2_in;
+                        z_step_y_q <= z_step_y_in;
+                        color_q    <= color_in;
+                        col_base_q <= col_base_in;
+                        row_base_q <= row_base_in;
+                        last_row_q <= last_row_in;
 
-            if (x == lat_bbox_xmax) begin
-                x <= lat_bbox_xmin;
-                y <= y + 1;
-                e0_row <= e0_row + lat_b0;
-                e1_row <= e1_row + lat_b1;
-                e2_row <= e2_row + lat_b2;
-                z_row <= z_row + lat_z_step_y;
-                e0 <= e0_row + lat_b0;
-                e1 <= e1_row + lat_b1;
-                e2 <= e2_row + lat_b2;
-                z <= z_row + lat_z_step_y;
-            end else begin
-                x <= x + 1;
-                e0 <= e0 + lat_a0;
-                e1 <= e1 + lat_a1;
-                e2 <= e2 + lat_a2;
-                z <= z + lat_z_step_x;
-            end
+                        cur_row <= row_base_in;
+                        state   <= S_ACTIVE;
 
-            if (y == lat_clip_ymax && x == lat_bbox_xmax) begin
-                active <= 0;
-                ready  <= 1;
-            end
-
-        end else if (valid_in && ready) begin
-           //note: if back-facing we just leave ready=1 so FIFO advances next cycle
-           //(might move backface cull to SW later to save FIFO bandwidth)
-           if (packet.front_facing) begin
-                logic [8:0] clip_ymin, clip_ymax;
-                //DONE: skip was 32 bits which made b*skip and z_step_y*skip
-                //infer full 32x32 signed DSP cascades. skip is bounded by screen
-                //height (<=240) so 9 bits + sign is plenty -> 32x10 mults, one DSP each.
-                //should help fmax once FIFO+arbiter get wired in
-                logic signed [9:0] skip;
-                clip_ymin = (packet.bbox_ymin > 9'(Y_MIN_CLIP)) ? packet.bbox_ymin : 9'(Y_MIN_CLIP);
-                clip_ymax = (packet.bbox_ymax < 9'(Y_MAX_CLIP)) ? packet.bbox_ymax : 9'(Y_MAX_CLIP);
-                skip = $signed({1'b0, clip_ymin}) - $signed({1'b0, packet.bbox_ymin});
-
-                if (clip_ymin <= clip_ymax) begin
-                    lat_bbox_xmin <= packet.bbox_xmin;
-                    lat_bbox_xmax <= packet.bbox_xmax;
-                    lat_clip_ymin <= clip_ymin;
-                    lat_clip_ymax <= clip_ymax;
-                    lat_a0 <= packet.a0;
-                    lat_a1 <= packet.a1;
-                    lat_a2 <= packet.a2;
-                    lat_b0 <= packet.b0;
-                    lat_b1 <= packet.b1;
-                    lat_b2 <= packet.b2;
-                    lat_z_step_x <= packet.z_step_x;
-                    lat_z_step_y <= packet.z_step_y;
-                    lat_color <= packet.color;
-                    x <= packet.bbox_xmin;
-                    y <= clip_ymin;
-                    e0_row <= packet.e0_init + packet.b0 * skip;
-                    e1_row <= packet.e1_init + packet.b1 * skip;
-                    e2_row <= packet.e2_init + packet.b2 * skip;
-                    e0 <= packet.e0_init + packet.b0 * skip;
-                    e1 <= packet.e1_init + packet.b1 * skip;
-                    e2 <= packet.e2_init + packet.b2 * skip;
-                    z_row <= packet.z_at_origin + packet.z_step_y * skip;
-                    z <= packet.z_at_origin + packet.z_step_y * skip;
-                    active <= 1;
-                    ready <= 0;
+                        // Forward (seed + a) to the next PU on the same
+                        // edge as the latch. Both inputs are registered
+                        // upstream so this is a single 32-bit add per PU,
+                        // not a cascaded combinational chain.
+                        if (!IS_LAST_PU) begin
+                            seed_valid_out <= 1'b1;
+                            seed_e0_out    <= seed_e0_in + a0_in;
+                            seed_e1_out    <= seed_e1_in + a1_in;
+                            seed_e2_out    <= seed_e2_in + a2_in;
+                            seed_z_out     <= seed_z_in  + z_step_x_in;
+                        end
+                    end
                 end
-           end
+
+                S_ACTIVE: begin
+                    // queue this cycle's candidate for next-cycle z-test
+                    q_valid  <= 1'b1;
+                    q_inside <= inside_now;
+                    q_addr   <= addr_now;
+                    q_col    <= col_base_q;
+                    q_row    <= cur_row;
+                    q_color  <= color_q;
+                    q_z      <= z[Z_MSB:Z_LSB];
+
+                    // walk one row down
+                    e0      <= e0 + b0_q;
+                    e1      <= e1 + b1_q;
+                    e2      <= e2 + b2_q;
+                    z       <= z  + z_step_y_q;
+                    cur_row <= cur_row + 8'd1;
+
+                    if (cur_row == last_row_q) begin
+                        state <= S_IDLE;
+                    end
+                end
+
+                default: state <= S_IDLE;
+            endcase
         end
+
+        // ---- Z-buffer port A: synchronous read every cycle ----
+        z_rd <= z_mem[addr_now];
+        // ---- Z-buffer port B: conditional write at cycle N+1 ----
+        if (z_pass) begin
+            z_mem[q_addr] <= q_z;
+        end
+
+        // ---- color framebuffer write (same condition as z) ----
+        if (z_pass) begin
+            if (fb_write_sel) fb_b_mem[q_addr] <= q_color;
+            else              fb_a_mem[q_addr] <= q_color;
+            p_write <= 1'b1;
+            p_col   <= q_col;
+            p_row   <= q_row;
+            p_color <= q_color;
+            p_depth <= q_z;
+        end
+
+        // ---- VGA read ports (independent of rasterizer port) ----
+        fb_a_rd <= fb_a_mem[vga_r_addr];
+        fb_b_rd <= fb_b_mem[vga_r_addr];
     end
-    
 
-
-    //TODO: gonna need RAM for z buffer inside this unit
-    //m10k has 1 cycle read latency
-    //probably means adding an FSM
-    //- compute addr from (x,y), read stored depth from z buffer
-    //- compare read depth vs z[Z_MSB:Z_LSB], write if new depth < stored
-
-    //DONE: y-range clipping for parallel pixel units
-    //skip triangle entirely if clipped_ymin > clipped_ymax
-    //also need to adjust e0_init/e1_init/e2_init/z_at_origin for skipped rows
-    //(add b0 * (clipped_ymin - bbox_ymin) etc)
-
-    //TODO: confirm Z_MSB/Z_LSB once SW prints actual z range for a test mesh
-    //current guess assumes depth fits in low 16 bits of Q12.12
+    assign vga_r_data = vga_r_buf_sel ? fb_b_rd : fb_a_rd;
 
 endmodule

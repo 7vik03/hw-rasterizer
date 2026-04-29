@@ -7,7 +7,7 @@
 
 module triangle_dispatcher_tb;
 
-    localparam int N            = 2;
+    localparam int N            = 16;   // matches the new 16-PU chain
     localparam int NUM_PACKETS  = 5;
     localparam int BUSY_CYCLES  = 10;
 
@@ -52,7 +52,7 @@ module triangle_dispatcher_tb;
     assign pop_data      = fifo_pop_data;
     assign fifo_pop      = pop_ACK;
 
-    triangle_dispatcher #(.N(N)) u_dispatcher (
+    triangle_dispatcher #(.N_PU(N)) u_dispatcher (
         .clk(clk),
         .rst(rst),
         .pop(pop),
@@ -128,7 +128,8 @@ module triangle_dispatcher_tb;
         @(posedge clk);
 
         check(fifo_empty, "fifo empty after reset");
-        check(accepted[0] == 0 && accepted[1] == 0, "no pixels accepted at reset");
+        for (int u = 0; u < N; u++)
+            check(accepted[u] == 0, $sformatf("unit %0d accepted nothing at reset", u));
 
         // push NUM_PACKETS back-to-back; dispatcher will start draining in
         // parallel once it sees pop_available
@@ -141,28 +142,35 @@ module triangle_dispatcher_tb;
         fifo_push      <= 1'b0;
         fifo_push_data <= '0;
 
-        // wait for both units to see all packets, or give up
+        // wait for every fake unit to see all packets, or give up
         timeout = 0;
-        while ((accepted[0] < NUM_PACKETS || accepted[1] < NUM_PACKETS)
-               && timeout < 1000) begin
-            @(posedge clk);
-            timeout++;
+        begin
+            bit all_done;
+            do begin
+                all_done = 1'b1;
+                for (int u = 0; u < N; u++)
+                    if (accepted[u] < NUM_PACKETS) all_done = 1'b0;
+                if (all_done) break;
+                @(posedge clk);
+                timeout++;
+            end while (timeout < 5000);
         end
 
-        check(accepted[0] == NUM_PACKETS,
-              $sformatf("unit 0 accepted %0d/%0d", accepted[0], NUM_PACKETS));
-        check(accepted[1] == NUM_PACKETS,
-              $sformatf("unit 1 accepted %0d/%0d", accepted[1], NUM_PACKETS));
+        for (int u = 0; u < N; u++)
+            check(accepted[u] == NUM_PACKETS,
+                  $sformatf("unit %0d accepted %0d/%0d",
+                            u, accepted[u], NUM_PACKETS));
         check(fifo_empty, "fifo should drain fully");
 
-        // content + order, plus broadcast identity between units
+        // content + order, plus broadcast identity across all units
         for (int i = 0; i < NUM_PACKETS; i++) begin
-            check(got[0][i] === sent[i],
-                  $sformatf("unit 0 packet %0d mismatch", i));
-            check(got[1][i] === sent[i],
-                  $sformatf("unit 1 packet %0d mismatch", i));
-            check(got[0][i] === got[1][i],
-                  $sformatf("units disagreed on packet %0d", i));
+            for (int u = 0; u < N; u++) begin
+                check(got[u][i] === sent[i],
+                      $sformatf("unit %0d packet %0d mismatch", u, i));
+                check(got[u][i] === got[0][i],
+                      $sformatf("unit %0d disagreed with unit 0 on packet %0d",
+                                u, i));
+            end
         end
 
         if (errors == 0)

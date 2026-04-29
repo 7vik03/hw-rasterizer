@@ -1,16 +1,25 @@
 `include "triangle_packet.svh"
 
-// pops one triangle packet from the FIFO and broadcasts it to N pixel units.
-// only issues a new packet when every pixel unit reports ready; this keeps
-// all units in lockstep so each gets every triangle (they self-partition via
-// per-instance Y_MIN_CLIP / Y_MAX_CLIP).
+// Pops one triangle packet from the FIFO and broadcasts it to N_PU pixel
+// units. Only issues a new packet when *every* pixel unit reports ready,
+// so the whole systolic chain has fully drained before the next triangle
+// arrives. The broadcast `packet_out` stays latched between dispatches,
+// so each PU still sees the right constants when its own seed_valid_in
+// fires (the chain may not finish latching for ~2*N_PU cycles after
+// seed_valid_out[0] pulses).
 //
 // fifo side uses Shlok's 2-cycle handshake:
 //   pop asserted while downstream is ready -> wait for pop_available ->
 //   latch pop_data -> pulse pop_ACK the cycle after.
+//
+// In the systolic 16-PU layout only valid_out[0] is consumed (it drives
+// PU0's seed_valid_in; the chain forwards from there). The vector form
+// is preserved so older 2-PU testbenches still compile, and so the
+// dispatcher itself is oblivious to whether downstream is broadcast or
+// systolic.
 
 module triangle_dispatcher #(
-    parameter int N = 2
+    parameter int N_PU = 16
 ) (
     input  logic             clk,
     input  logic             rst,
@@ -20,9 +29,9 @@ module triangle_dispatcher #(
     input  triangle_packet_t pop_data,
     output logic             pop_ACK,
 
-    output logic [N-1:0]     valid_out,
+    output logic [N_PU-1:0]  valid_out,
     output triangle_packet_t packet_out,
-    input  logic [N-1:0]     ready_in
+    input  logic [N_PU-1:0]  ready_in
 );
 
     typedef enum logic [1:0] {
@@ -35,6 +44,9 @@ module triangle_dispatcher #(
     triangle_packet_t latched;
     logic             all_ready;
 
+    // gating on every PU being ready means the next triangle only goes
+    // out after the slowest column (typically PU_(N_PU-1) at the tail of
+    // the chain) has fully drained back to IDLE.
     assign all_ready  = &ready_in;
     assign packet_out = latched;
 
@@ -51,8 +63,6 @@ module triangle_dispatcher #(
             case (state)
                 WAIT: begin
                     if (all_ready) pop <= 1'b1;
-                    // gate the latch on pop being registered high so we honor
-                    // the request-before-grant ordering, not just !empty
                     if (pop && pop_available) begin
                         latched <= pop_data;
                         state   <= BCAST;
