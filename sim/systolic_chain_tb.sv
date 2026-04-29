@@ -4,10 +4,13 @@
 //
 // Coverage:
 //   - Seed propagates from PU0 through PU3 with 1-cycle stagger.
-//   - Each PU eventually emits exactly N_ROWS pixels for its column.
+//   - Each PU emits N_COLS_PER_PU * N_ROWS pixels (multi-column iteration).
+//     With bbox_xmin=0 and bbox_xmax=35 every PU walks 3 columns at stride
+//     16, so we exercise both the systolic seed path AND the in-PU column
+//     jump.
 //   - Once the chain is full, all 4 PUs write in the same cycle on a
-//     diagonal: in the cycle where PU(N-1) emits row 0, PU(N-2) is on
-//     row 1, ..., PU0 is on row N-1.
+//     diagonal: in the cycle where PU(N-1) emits row 0 of its first
+//     column, PU(N-2) is on row 1, ..., PU0 is on row N-1.
 //   - PU3 (IS_LAST_PU) never asserts seed_valid_out.
 
 `timescale 1ns/1ps
@@ -15,10 +18,12 @@
 
 module systolic_chain_tb;
 
-    localparam int N_PU    = 4;
-    localparam int N_ROWS  = 5;     // rows per PU
-    localparam int FB_DEPTH = 4096;
-    localparam int Z_DEPTH  = 4096;
+    localparam int N_PU            = 4;
+    localparam int N_ROWS          = 5;     // rows per column
+    localparam int N_COLS_PER_PU   = 3;     // 3 stride-16 columns per PU
+    localparam int LAST_COL        = 35;    // bbox_xmax: 0..35 covers 3 cols/PU
+    localparam int FB_DEPTH        = 4096;
+    localparam int Z_DEPTH         = 4096;
 
     logic clk, rst;
 
@@ -38,7 +43,7 @@ module systolic_chain_tb;
     // ---------------- broadcast constants (driven by TB) ----------------
     logic signed [31:0] a0_b, a1_b, a2_b, z_step_x_b;
     logic signed [31:0] b0_b, b1_b, b2_b, z_step_y_b;
-    logic [7:0]         color_b, row_base_b, last_row_b;
+    logic [7:0]         color_b, row_base_b, last_row_b, last_col_b;
     logic [7:0]         col_base_for_pu [N_PU];
 
     // ---------------- TB-driven seed for PU0 ----------------
@@ -98,6 +103,7 @@ module systolic_chain_tb;
                 .col_base_in    (col_base_for_pu[gi]),
                 .row_base_in    (row_base_b),
                 .last_row_in    (last_row_b),
+                .last_col_in    (last_col_b),
                 .seed_valid_out (sv_out[gi]),
                 .seed_e0_out    (se0_out[gi]),
                 .seed_e1_out    (se1_out[gi]),
@@ -224,6 +230,7 @@ module systolic_chain_tb;
         color_b       = '0;
         row_base_b    = '0;
         last_row_b    = '0;
+        last_col_b    = '0;
     endtask
 
     initial begin
@@ -249,6 +256,7 @@ module systolic_chain_tb;
         color_b    <= 8'h7E;
         row_base_b <= 8'd0;
         last_row_b <= 8'(N_ROWS - 1);
+        last_col_b <= 8'(LAST_COL);    // every PU walks 3 stride-16 columns
 
         tb_seed_e0 <= 32'sd100;
         tb_seed_e1 <= 32'sd200;
@@ -262,13 +270,14 @@ module systolic_chain_tb;
         tb_seed_valid <= 1'b0;
 
         // ---- wait for the chain to drain ----
-        // worst case: fill (N_PU) + active rows (N_ROWS) + read pipeline (2)
-        repeat (N_PU + N_ROWS + 16) @(posedge clk);
+        // worst case: fill (N_PU) + N_COLS_PER_PU * N_ROWS active cycles +
+        // a few cycles of read-pipeline tail.
+        repeat (N_PU + N_COLS_PER_PU * N_ROWS + 16) @(posedge clk);
 
         for (int u = 0; u < N_PU; u++) begin
-            check(pix_count[u] == N_ROWS,
+            check(pix_count[u] == N_COLS_PER_PU * N_ROWS,
                   $sformatf("PU%0d emitted %0d pixels, expected %0d",
-                            u, pix_count[u], N_ROWS));
+                            u, pix_count[u], N_COLS_PER_PU * N_ROWS));
             check(pu_ready[u] === 1'b1,
                   $sformatf("PU%0d not back to ready after drain", u));
         end
@@ -287,8 +296,8 @@ module systolic_chain_tb;
               "diagonal cycle witness never fired (chain may not have filled)");
 
         if (errors == 0)
-            $display("PASS systolic_chain_tb: %0d-PU chain, %0d rows each",
-                     N_PU, N_ROWS);
+            $display("PASS systolic_chain_tb: %0d-PU chain, %0d cols x %0d rows each",
+                     N_PU, N_COLS_PER_PU, N_ROWS);
         else
             $display("FAIL systolic_chain_tb: %0d errors", errors);
         $finish;

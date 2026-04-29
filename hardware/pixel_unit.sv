@@ -30,6 +30,15 @@
 // candidate (color, depth, row, inside-flag); cycle N+1 the read result is
 // available, the z compare runs, and the conditional write fires on the
 // other port.
+//
+// Multi-column iteration: a PU is responsible for *every* screen column
+// whose low nibble equals PU_ID, not just one column per triangle. After
+// the first column finishes (cur_row == last_row) the PU jumps 16 columns
+// to the right, resets cur_row, and walks again. This continues until
+// col_base + 16 would step past last_col, at which point the PU returns
+// to IDLE. The systolic seed is only consumed for the first column;
+// subsequent columns are derived locally by adding 16*a to the column-top
+// edge values stored at the IDLE->ACTIVE latch.
 
 module pixel_unit #(
     parameter int  PU_ID       = 0,
@@ -62,6 +71,7 @@ module pixel_unit #(
     input  logic [7:0]         col_base_in,
     input  logic [7:0]         row_base_in,
     input  logic [7:0]         last_row_in,
+    input  logic [7:0]         last_col_in,    // bbox_xmax; controls multi-col stop
 
     // ---- systolic seed out (to next PU; tied 0 when IS_LAST_PU) ----
     output logic               seed_valid_out,
@@ -94,10 +104,18 @@ module pixel_unit #(
     logic signed [31:0] a0_q, a1_q, a2_q, z_step_x_q;
     logic signed [31:0] b0_q, b1_q, b2_q, z_step_y_q;
     logic [7:0]         color_q, col_base_q, row_base_q, last_row_q;
+    logic [7:0]         last_col_q;
 
     // ---- walk accumulators, advanced once per ACTIVE cycle ----
     logic signed [31:0] e0, e1, e2, z;
     logic [7:0]         cur_row;
+
+    // ---- column-top anchors: edge/depth values at (col_base, row_base) for
+    //      the column currently being walked. When we jump 16 columns right
+    //      we can't just add 16*a to live e0/e1/e2/z (those have walked +b
+    //      for many cycles), so we keep these snapshots that only update
+    //      when we move to a new column.
+    logic signed [31:0] e0_col_top, e1_col_top, e2_col_top, z_col_top;
 
     assign ready = (state == S_IDLE);
 
@@ -158,11 +176,20 @@ module pixel_unit #(
             unique case (state)
                 S_IDLE: begin
                     if (seed_valid_in) begin
-                        // latch seed accumulators
+                        // latch seed accumulators (live walk)
                         e0 <= seed_e0_in;
                         e1 <= seed_e1_in;
                         e2 <= seed_e2_in;
                         z  <= seed_z_in;
+
+                        // also snapshot the column-top values; the live
+                        // accumulators will diverge as we walk +b, so we
+                        // need a clean reference point for the +16*a jump
+                        // between columns.
+                        e0_col_top <= seed_e0_in;
+                        e1_col_top <= seed_e1_in;
+                        e2_col_top <= seed_e2_in;
+                        z_col_top  <= seed_z_in;
 
                         // latch triangle constants
                         a0_q       <= a0_in;
@@ -177,6 +204,7 @@ module pixel_unit #(
                         col_base_q <= col_base_in;
                         row_base_q <= row_base_in;
                         last_row_q <= last_row_in;
+                        last_col_q <= last_col_in;
 
                         cur_row <= row_base_in;
                         state   <= S_ACTIVE;
@@ -205,7 +233,8 @@ module pixel_unit #(
                     q_color  <= color_q;
                     q_z      <= z[Z_MSB:Z_LSB];
 
-                    // walk one row down
+                    // walk one row down (default; may be overridden below
+                    // on a column-jump cycle since later NBAs win)
                     e0      <= e0 + b0_q;
                     e1      <= e1 + b1_q;
                     e2      <= e2 + b2_q;
@@ -213,7 +242,32 @@ module pixel_unit #(
                     cur_row <= cur_row + 8'd1;
 
                     if (cur_row == last_row_q) begin
-                        state <= S_IDLE;
+                        // Decide on a 9-bit compare so col_base_q + 16
+                        // doesn't wrap on the bbox_xmax = 255 edge. Last
+                        // column to walk is one whose col_base + 16 still
+                        // sits at-or-below last_col_q; otherwise we're
+                        // done.
+                        if (({1'b0, col_base_q} + 9'd16) > {1'b0, last_col_q}) begin
+                            state <= S_IDLE;
+                        end else begin
+                            // Jump 16 columns right. Reset row to top and
+                            // recompute the live e/z from the column-top
+                            // anchors plus 16*a. Both the live regs and the
+                            // anchors advance, so the next jump (if any)
+                            // builds on the new top values.
+                            e0         <= e0_col_top + (a0_q       <<< 4);
+                            e1         <= e1_col_top + (a1_q       <<< 4);
+                            e2         <= e2_col_top + (a2_q       <<< 4);
+                            z          <= z_col_top  + (z_step_x_q <<< 4);
+                            e0_col_top <= e0_col_top + (a0_q       <<< 4);
+                            e1_col_top <= e1_col_top + (a1_q       <<< 4);
+                            e2_col_top <= e2_col_top + (a2_q       <<< 4);
+                            z_col_top  <= z_col_top  + (z_step_x_q <<< 4);
+
+                            col_base_q <= col_base_q + 8'd16;
+                            cur_row    <= row_base_q;
+                            // stay in S_ACTIVE
+                        end
                     end
                 end
 

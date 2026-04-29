@@ -162,6 +162,7 @@ module rasterizer_top (
                 .col_base_in    (col_base_for_pu),
                 .row_base_in    (pu_packet.bbox_ymin[7:0]),
                 .last_row_in    (pu_packet.bbox_ymax[7:0]),
+                .last_col_in    (pu_packet.bbox_xmax[7:0]),
 
                 .seed_valid_out (sv_out),
                 .seed_e0_out    (se0_out),

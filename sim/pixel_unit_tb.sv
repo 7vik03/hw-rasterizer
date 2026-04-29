@@ -13,6 +13,10 @@
 //      farther depth must not overwrite (and must not emit p_write).
 //   5. IS_LAST_PU=1 instance: seed_valid_out is held low even while ACTIVE.
 //   6. Back-to-back triangles: latched constants don't leak between dispatches.
+//   7. Multi-column iteration: bbox spans 3 columns at stride 16. Verifies
+//      that the PU jumps 16 columns right at end-of-column, recomputes
+//      e/z from col_top + 16*a, and only returns to IDLE once col_base+16
+//      would step past last_col.
 
 `timescale 1ns/1ps
 `include "triangle_packet.svh"
@@ -32,6 +36,7 @@ module pixel_unit_tb;
     logic signed [31:0] a0_in, a1_in, a2_in, z_step_x_in;
     logic signed [31:0] b0_in, b1_in, b2_in, z_step_y_in;
     logic [7:0]         color_in, col_base_in, row_base_in, last_row_in;
+    logic [7:0]         last_col_in;
 
     logic               ready;
     logic               seed_valid_out;
@@ -67,6 +72,7 @@ module pixel_unit_tb;
         .col_base_in(col_base_in),
         .row_base_in(row_base_in),
         .last_row_in(last_row_in),
+        .last_col_in(last_col_in),
         .seed_valid_out(seed_valid_out),
         .seed_e0_out(seed_e0_out),
         .seed_e1_out(seed_e1_out),
@@ -102,6 +108,7 @@ module pixel_unit_tb;
         .z_step_y_in(z_step_y_in),
         .color_in(color_in), .col_base_in(col_base_in),
         .row_base_in(row_base_in), .last_row_in(last_row_in),
+        .last_col_in(last_col_in),
         .seed_valid_out(last_seed_valid_out),
         .seed_e0_out(last_seed_e0_out),
         .seed_e1_out(), .seed_e2_out(), .seed_z_out(),
@@ -161,6 +168,7 @@ module pixel_unit_tb;
         col_base_in = '0;
         row_base_in = '0;
         last_row_in = '0;
+        last_col_in = '0;
         vga_r_addr     = '0;
         vga_r_buf_sel  = 1'b0;
         fb_write_sel   = 1'b0;
@@ -223,6 +231,7 @@ module pixel_unit_tb;
         col_base_in<= 8'h13;     // low nibble = 3 = PU_ID, bank = 1
         row_base_in<= 8'd0;
         last_row_in<= 8'd4;
+        last_col_in<= 8'h13;     // 1-column triangle: bbox_xmax == col_base
         @(posedge clk);
 
         // pulse seed_valid_in for one cycle
@@ -280,6 +289,7 @@ module pixel_unit_tb;
         last_row_in <= 8'd3;
         row_base_in <= 8'd0;
         col_base_in <= 8'h03;
+        last_col_in <= 8'h03;
         @(posedge clk);
 
         seed_valid_in <= 1'b1;
@@ -305,6 +315,7 @@ module pixel_unit_tb;
         last_row_in <= 8'd3;
         row_base_in <= 8'd0;
         col_base_in <= 8'h03;
+        last_col_in <= 8'h03;
         @(posedge clk);
 
         seed_valid_in <= 1'b1;
@@ -364,6 +375,7 @@ module pixel_unit_tb;
         col_base_in <= 8'h03;
         row_base_in <= 8'd0;
         last_row_in <= 8'd2;
+        last_col_in <= 8'h03;
         @(posedge clk);
         seed_valid_in <= 1'b1;
         @(posedge clk);
@@ -378,6 +390,7 @@ module pixel_unit_tb;
         col_base_in <= 8'h13;
         row_base_in <= 8'd100;
         last_row_in <= 8'd103;
+        last_col_in <= 8'h13;
         seed_z_in   <= 32'sh0040;
         @(posedge clk);
         seed_valid_in <= 1'b1;
@@ -406,6 +419,92 @@ module pixel_unit_tb;
             check(pix_row[i+3]   === 8'(100 + i),
                   $sformatf("second-tri pix[%0d] row", i));
         end
+
+        // ----------------------------------------------------------------
+        // Test 7: multi-column iteration
+        //   PU_ID = 3, col_base_in = 0x03, last_col_in = 0x2F (47).
+        //   Expected column sequence: 3 -> 19 -> 35 -> IDLE.
+        //   Each column emits 5 rows (last_row=4, row_base=0).
+        //   Total: 15 pixels in row-major-then-column order.
+        // ----------------------------------------------------------------
+        $display("--- Test 7: multi-column iteration (3 cols at stride 16) ---");
+        // wait for the previous triangle to fully drain so we don't race
+        wait (ready);
+        repeat (4) @(posedge clk);
+
+        z_clear_to_far();
+        pix_n = 0;
+
+        // a values nonzero so we can verify the col_top + 16*a jump math
+        seed_e0_in <= 32'sd100;
+        seed_e1_in <= 32'sd200;
+        seed_e2_in <= 32'sd300;
+        seed_z_in  <= 32'sh0040;
+        a0_in      <= 32'sd2;
+        a1_in      <= 32'sd3;
+        a2_in      <= 32'sd5;
+        z_step_x_in<= 32'sd0;
+        b0_in      <= 32'sd0;
+        b1_in      <= 32'sd0;
+        b2_in      <= 32'sd0;
+        z_step_y_in<= 32'sd0;
+        color_in   <= 8'h7C;
+        col_base_in<= 8'h03;     // PU_ID=3, first column = screen col 3
+        row_base_in<= 8'd0;
+        last_row_in<= 8'd4;      // 5 rows per column
+        last_col_in<= 8'd47;     // bbox spans cols 3..47 -> PU walks 3,19,35
+        @(posedge clk);
+        seed_valid_in <= 1'b1;
+        @(posedge clk);
+        seed_valid_in <= 1'b0;
+
+        // 3 columns * 5 rows = 15 ACTIVE cycles + 2 cycles read pipeline
+        // = 17 cycles minimum. Wait for ready, then a few extra cycles
+        // for the pipeline to flush.
+        wait (ready);
+        repeat (4) @(posedge clk);
+
+        check(pix_n == 15,
+              $sformatf("multi-col: expected 15 pixels, got %0d", pix_n));
+
+        // verify the (col, row) stream: 5 rows per column, columns 3,19,35
+        begin
+            logic [7:0] expected_cols [3];
+            expected_cols[0] = 8'd3;
+            expected_cols[1] = 8'd19;
+            expected_cols[2] = 8'd35;
+            for (int c = 0; c < 3; c++) begin
+                for (int r = 0; r < 5; r++) begin
+                    int idx;
+                    idx = c * 5 + r;
+                    if (idx < pix_n) begin
+                        check(pix_col[idx] === expected_cols[c],
+                              $sformatf("multi-col pix[%0d] col=%0d expected %0d",
+                                        idx, pix_col[idx], expected_cols[c]));
+                        check(pix_row[idx] === 8'(r),
+                              $sformatf("multi-col pix[%0d] row=%0d expected %0d",
+                                        idx, pix_row[idx], r));
+                        check(pix_color[idx] === 8'h7C,
+                              $sformatf("multi-col pix[%0d] color", idx));
+                    end
+                end
+            end
+        end
+
+        // verify the column-top accumulators advanced by +16*a per jump.
+        // After 3 columns the live regs sit at the post-IDLE state; the
+        // col_top regs hold the third column's seed (= seed + 32*a).
+        check(dut.col_base_q === 8'd35,
+              $sformatf("multi-col: dut.col_base_q=%0d expected 35", dut.col_base_q));
+        check(dut.e0_col_top === 32'sd100 + 32'sd32 * 32'sd2,
+              $sformatf("multi-col: e0_col_top=%0d expected %0d",
+                        dut.e0_col_top, 100 + 32*2));
+        check(dut.e1_col_top === 32'sd200 + 32'sd32 * 32'sd3,
+              $sformatf("multi-col: e1_col_top=%0d expected %0d",
+                        dut.e1_col_top, 200 + 32*3));
+        check(dut.e2_col_top === 32'sd300 + 32'sd32 * 32'sd5,
+              $sformatf("multi-col: e2_col_top=%0d expected %0d",
+                        dut.e2_col_top, 300 + 32*5));
 
         if (errors == 0)
             $display("PASS pixel_unit_tb");

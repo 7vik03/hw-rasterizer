@@ -52,6 +52,21 @@ Fill latency is 16 cycles; for a triangle of bbox-height H the total
 runtime is H + 16 + a couple of pipeline cycles for the read-modify-
 write z-test.
 
+### Multi-column iteration
+
+After a PU finishes walking its first column, it jumps 16 columns to
+the right (PU_ID, PU_ID + 16, PU_ID + 32, ...) and walks the next
+column. This continues until the PU's column index exceeds bbox_xmax,
+at which point it returns to IDLE. The systolic seed propagation only
+seeds the FIRST column for each PU; subsequent columns are computed
+internally using stored column-top edge values plus 16*a -- the live
+e/z accumulators have walked +b for many cycles by end-of-column and
+can't be reused, so the PU keeps a separate snapshot of (e0, e1, e2,
+z) at the top of the current column. That snapshot, plus 16 left-shift
+of a/z_step_x, gives the seed for the next column without any
+contribution from the chain. The dispatcher still issues exactly one
+broadcast per triangle.
+
 ## Memory layout
 
 | Name              | Width | Depth | Per-PU M10K | Total M10K | Notes                       |
