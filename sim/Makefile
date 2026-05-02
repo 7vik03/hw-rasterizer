@@ -81,7 +81,7 @@ top_tb: $(BUILD)/.stamp_top_tb
 	$(VSIM) $(VSIMFLAGS) rasterizer_top_tb 2>&1 | tee $(BUILD)/top_tb.log
 	@grep -q "^PASS" $(BUILD)/top_tb.log || (echo ">>> top_tb FAILED"; exit 1)
 
-all: pu_tb chain_tb disp_tb fifo_tb
+all: pu_tb chain_tb disp_tb fifo_tb top_tb
 
 clean:
 	rm -rf $(BUILD) modelsim.ini transcript *.wlf

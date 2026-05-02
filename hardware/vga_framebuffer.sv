@@ -12,6 +12,9 @@ module vga_framebuffer (
     // Current rasterizer write buffer
     input  logic        fb_write_sel,
 
+    // Pulses once per completed VGA frame
+    output logic        frame_done,
+
     // VGA pins
     output logic [7:0]  VGA_R, VGA_G, VGA_B,
     output logic        VGA_CLK, VGA_HS, VGA_VS,
@@ -27,6 +30,7 @@ module vga_framebuffer (
         .reset(reset),
         .hcount(hcount),
         .vcount(vcount),
+        .frame_done(frame_done),
         .VGA_CLK(VGA_CLK),
         .VGA_HS(VGA_HS),
         .VGA_VS(VGA_VS),
@@ -88,5 +92,54 @@ module vga_framebuffer (
                      pixelcolor[1:0], pixelcolor[1:0]};
         end
     end
+
+endmodule
+
+module vga_counters (
+    input  logic        clk50,
+    input  logic        reset,
+    output logic [10:0] hcount,
+    output logic [9:0]  vcount,
+    output logic        frame_done,
+    output logic        VGA_CLK,
+    output logic        VGA_HS,
+    output logic        VGA_VS,
+    output logic        VGA_BLANK_n,
+    output logic        VGA_SYNC_n
+);
+
+    logic pixel_tick;
+
+    always_ff @(posedge clk50 or posedge reset) begin
+        if (reset) begin
+            pixel_tick <= 1'b0;
+            hcount     <= 11'd0;
+            vcount     <= 10'd0;
+            frame_done <= 1'b0;
+        end else begin
+            pixel_tick <= ~pixel_tick;
+            frame_done <= 1'b0;
+
+            if (pixel_tick) begin
+                if (hcount == 11'd799) begin
+                    hcount <= 11'd0;
+                    if (vcount == 10'd524) begin
+                        vcount     <= 10'd0;
+                        frame_done <= 1'b1;
+                    end else begin
+                        vcount <= vcount + 10'd1;
+                    end
+                end else begin
+                    hcount <= hcount + 11'd1;
+                end
+            end
+        end
+    end
+
+    assign VGA_CLK    = pixel_tick;
+    assign VGA_HS     = ~((hcount >= 11'd656) && (hcount < 11'd752));
+    assign VGA_VS     = ~((vcount >= 10'd490) && (vcount < 10'd492));
+    assign VGA_BLANK_n = (hcount < 11'd640) && (vcount < 10'd480);
+    assign VGA_SYNC_n  = 1'b0;
 
 endmodule

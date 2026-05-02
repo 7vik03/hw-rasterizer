@@ -239,46 +239,22 @@ module rasterizer_top (
             end
         end
     end
-    // VGA always reads the *other* buffer
-    assign vga_r_buf_sel = ~fb_write_sel;
-
-    // ---------------- VGA read mux ----------------
-    logic [7:0] vga_fb_x;
-    logic [7:0] vga_fb_y;
-    logic       vga_in_fb_region;
-    logic [7:0] vga_pixel_in;
-
-    assign vga_r_addr = {vga_fb_x[7:4], vga_fb_y};
-
-    // 1-cycle pipeline so the PU's synchronous read latency matches the
-    // mux select that decodes which PU owns this column.
-    logic [3:0] vga_fb_x_lo_d1;
-    logic       vga_in_fb_region_d1;
-    always_ff @(posedge clk) begin
-        vga_fb_x_lo_d1      <= vga_fb_x[3:0];
-        vga_in_fb_region_d1 <= vga_in_fb_region;
-    end
-
-    logic [7:0] muxed_color;
-    assign muxed_color  = pu_vga_rdata[vga_fb_x_lo_d1];
-    assign vga_pixel_in = vga_in_fb_region_d1 ? muxed_color : 8'h00;
-
     vga_framebuffer u_vga (
-        .clk            (clk),
-        .reset          (rst),
-        .fb_pixel_color (vga_pixel_in),
-        .fb_x           (vga_fb_x),
-        .fb_y           (vga_fb_y),
-        .in_fb_region   (vga_in_fb_region),
-        .frame_done     (frame_done),
-        .VGA_R          (VGA_R),
-        .VGA_G          (VGA_G),
-        .VGA_B          (VGA_B),
-        .VGA_CLK        (VGA_CLK),
-        .VGA_HS         (VGA_HS),
-        .VGA_VS         (VGA_VS),
-        .VGA_BLANK_n    (VGA_BLANK_n),
-        .VGA_SYNC_n     (VGA_SYNC_n)
+        .clk          (clk),
+        .reset        (rst),
+        .pu_vga_data  (pu_vga_rdata),
+        .vga_r_addr   (vga_r_addr),
+        .vga_r_buf_sel(vga_r_buf_sel),
+        .fb_write_sel (fb_write_sel),
+        .frame_done   (frame_done),
+        .VGA_R        (VGA_R),
+        .VGA_G        (VGA_G),
+        .VGA_B        (VGA_B),
+        .VGA_CLK      (VGA_CLK),
+        .VGA_HS       (VGA_HS),
+        .VGA_VS       (VGA_VS),
+        .VGA_BLANK_n  (VGA_BLANK_n),
+        .VGA_SYNC_n   (VGA_SYNC_n)
     );
 
 endmodule
