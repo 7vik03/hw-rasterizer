@@ -141,6 +141,8 @@ module pixel_unit_tb;
         if (rst) begin
             pix_n <= 0;
         end else if (p_write) begin
+            $display("[%0t] p_write: col=%0d row=%0d color=%h depth=%h (idx=%0d)",
+                     $time, p_col, p_row, p_color, p_depth, pix_n);
             pix_col[pix_n]   <= p_col;
             pix_row[pix_n]   <= p_row;
             pix_color[pix_n] <= p_color;
@@ -210,6 +212,9 @@ module pixel_unit_tb;
         // ----------------------------------------------------------------
         // Test 2: 5-row column with all-positive edges and constant z
         // ----------------------------------------------------------------
+       // ----------------------------------------------------------------
+        // Test 2: 5-row column with all-positive edges and constant z
+        // ----------------------------------------------------------------
         $display("--- Test 2: 5-row column, all-positive edges ---");
         z_clear_to_far();
         pix_n = 0;
@@ -238,6 +243,7 @@ module pixel_unit_tb;
         seed_valid_in <= 1'b1;
         @(posedge clk);
         seed_valid_in <= 1'b0;
+        @(negedge clk);  // let NBAs settle so we sample post-edge values
 
         // The cycle right after the seed is sampled, the PU is in ACTIVE
         // for the first time and must be driving seed_valid_out high with
@@ -256,6 +262,7 @@ module pixel_unit_tb;
 
         // one more cycle; seed_valid_out must drop
         @(posedge clk);
+        @(negedge clk);
         check(!seed_valid_out, "seed_valid_out is a one-cycle pulse");
 
         // wait for column to drain (5 ACTIVE cycles + 2 cycles of read pipeline)
@@ -273,7 +280,6 @@ module pixel_unit_tb;
             check(pix_depth[i] === 16'h0100,
                   $sformatf("pix[%0d].depth=%h expected 0100", i, pix_depth[i]));
         end
-
         // ----------------------------------------------------------------
         // Test 3: inside-test cull -- e0 negative throughout
         // ----------------------------------------------------------------
@@ -419,8 +425,7 @@ module pixel_unit_tb;
             check(pix_row[i+3]   === 8'(100 + i),
                   $sformatf("second-tri pix[%0d] row", i));
         end
-
-        // ----------------------------------------------------------------
+// ----------------------------------------------------------------
         // Test 7: multi-column iteration
         //   PU_ID = 3, col_base_in = 0x03, last_col_in = 0x2F (47).
         //   Expected column sequence: 3 -> 19 -> 35 -> IDLE.
@@ -463,6 +468,14 @@ module pixel_unit_tb;
         // for the pipeline to flush.
         wait (ready);
         repeat (4) @(posedge clk);
+        @(negedge clk);   // sample mid-cycle for stable reads
+
+        $display("Test 7 result: pix_n=%0d, col_base_q=%0d, e0_col_top=%0d, e1_col_top=%0d, e2_col_top=%0d",
+                 pix_n, dut.col_base_q, dut.e0_col_top, dut.e1_col_top, dut.e2_col_top);
+        for (int i = 0; i < pix_n && i < 20; i++) begin
+            $display("  pix[%0d]: col=%0d row=%0d color=%h depth=%h",
+                     i, pix_col[i], pix_row[i], pix_color[i], pix_depth[i]);
+        end
 
         check(pix_n == 15,
               $sformatf("multi-col: expected 15 pixels, got %0d", pix_n));
@@ -505,6 +518,7 @@ module pixel_unit_tb;
         check(dut.e2_col_top === 32'sd300 + 32'sd32 * 32'sd5,
               $sformatf("multi-col: e2_col_top=%0d expected %0d",
                         dut.e2_col_top, 300 + 32*5));
+
 
         if (errors == 0)
             $display("PASS pixel_unit_tb");
