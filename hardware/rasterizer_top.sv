@@ -93,6 +93,13 @@ module rasterizer_top (
     // systolic layout only valid_out[0] is consumed -- it kicks PU0 off
     // and the chain fans the seed forward. The other bits dangle.
 
+    // all-ready signal from the chain. We use this both to gate the
+    // double-buffer swap (so we never swap mid-rasterization) and as
+    // observability. Same wire the dispatcher already AND-reduces
+    // internally; replicated here to keep the buffer-swap logic local.
+    logic chain_idle;
+    assign chain_idle = &pu_ready;
+
     // ---------------- 16 PUs in a systolic chain ----------------
     logic               chain_seed_valid [N_PU];
     logic signed [31:0] chain_seed_e0    [N_PU];
@@ -183,8 +190,13 @@ module rasterizer_top (
                 .fb_write_sel   (fb_write_sel)
             );
 
-            // wire the systolic chain
-            if (gi < N_PU - 1) begin : g_chain
+            // tie off unused outputs of the last PU so synthesis doesn't
+            // complain about the dangling sv_out / se*_out nets
+            if (gi == N_PU - 1) begin : g_chain_tail
+                // intentionally unconnected: sv_out, se0_out, se1_out,
+                // se2_out, sz_out -- they're only meaningful when there
+                // is a downstream PU
+            end else begin : g_chain
                 assign chain_seed_valid[gi + 1] = sv_out;
                 assign chain_seed_e0   [gi + 1] = se0_out;
                 assign chain_seed_e1   [gi + 1] = se1_out;
@@ -196,12 +208,36 @@ module rasterizer_top (
 
     // ---------------- Frame parity / double-buffer toggle ----------------
     // Toggle which framebuffer the rasterizer writes to (and which one
-    // VGA scans out) at the end of each frame. While VGA is mid-scan a
-    // mid-frame swap would tear, so we wait for vsync.
+    // VGA scans out) at the end of each frame. Two conditions must hold
+    // at the same time:
+    //   1. frame_done is pulsing  (VGA finished scanning a frame)
+    //   2. chain_idle is high     (no PU is mid-rasterization)
+    // If a triangle is still in flight when frame_done fires, we hold
+    // the swap pending until the chain drains. swap_pending captures
+    // that case: the swap will fire on the first cycle where chain_idle
+    // is high after the pulse.
+    //
+    // This avoids tearing where the rasterizer would write to the buffer
+    // VGA just started reading.
     logic frame_done;
+    logic swap_pending;
+
     always_ff @(posedge clk) begin
-        if (rst)             fb_write_sel <= 1'b0;
-        else if (frame_done) fb_write_sel <= ~fb_write_sel;
+        if (rst) begin
+            fb_write_sel <= 1'b0;
+            swap_pending <= 1'b0;
+        end else begin
+            // latch the request when frame_done pulses
+            if (frame_done) swap_pending <= 1'b1;
+
+            // perform the swap as soon as both: a request is pending AND
+            // the chain has drained. clear the pending flag in the same
+            // cycle we swap.
+            if (swap_pending && chain_idle) begin
+                fb_write_sel <= ~fb_write_sel;
+                swap_pending <= 1'b0;
+            end
+        end
     end
     // VGA always reads the *other* buffer
     assign vga_r_buf_sel = ~fb_write_sel;

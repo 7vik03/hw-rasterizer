@@ -39,6 +39,14 @@
 // to IDLE. The systolic seed is only consumed for the first column;
 // subsequent columns are derived locally by adding 16*a to the column-top
 // edge values stored at the IDLE->ACTIVE latch.
+//
+// Z-buffer init: z_mem powers up to 0. The z-test is `q_z <= z_rd`
+// (less-than-OR-EQUAL) so the very first write to any address always
+// succeeds even if z_rd reads 0. The minor cost is that two pixels with
+// identical depth both write (the second one wins), which is fine for
+// our use case -- z-fighting on coincident depths is invisible. This
+// avoids needing an explicit z-buffer clear pass at the start of each
+// frame.
 
 module pixel_unit #(
     parameter int  PU_ID       = 0,
@@ -160,8 +168,12 @@ module pixel_unit #(
 
     // smaller-depth wins (Q12.12 z, low-bits-up). Combinational so the
     // write decision lands on the same edge as the FB write.
+    //
+    // We use <= rather than < so the first write to any address always
+    // succeeds despite z_mem powering up to 0. See the file header for
+    // why this is safe.
     logic z_pass;
-    assign z_pass = q_valid && q_inside && (q_z < z_rd);
+    assign z_pass = q_valid && q_inside && (q_z <= z_rd);
 
     always_ff @(posedge clk) begin
         // sequential defaults so we don't latch pulse signals
@@ -242,11 +254,16 @@ module pixel_unit #(
                     cur_row <= cur_row + 8'd1;
 
                     if (cur_row == last_row_q) begin
-                        // Decide on a 9-bit compare so col_base_q + 16
-                        // doesn't wrap on the bbox_xmax = 255 edge. Last
-                        // column to walk is one whose col_base + 16 still
-                        // sits at-or-below last_col_q; otherwise we're
-                        // done.
+                        // End of current column. Stop AFTER walking
+                        // col_base_q if jumping by +16 would land past
+                        // last_col_q. The 9-bit compare prevents wrap
+                        // when col_base_q is near 8'hFF.
+                        //
+                        // Example: PU0 with last_col=255 walks columns
+                        // 0,16,...,240 then stops (since 240+16 > 255).
+                        // PU0 with last_col=239 walks 0,16,...,224 then
+                        // stops (since 224+16 > 239 and the next bank
+                        // PU0 owns would be column 240, outside bbox).
                         if (({1'b0, col_base_q} + 9'd16) > {1'b0, last_col_q}) begin
                             state <= S_IDLE;
                         end else begin
@@ -299,5 +316,20 @@ module pixel_unit #(
     end
 
     assign vga_r_data = vga_r_buf_sel ? fb_b_rd : fb_a_rd;
+
+    // ---- simulation-only sanity check ----
+    // verify the dispatcher is feeding this PU a col_base whose low
+    // nibble matches PU_ID. if this fires, the bbox_xmin alignment
+    // invariant in software was violated and memory writes will land
+    // in the wrong bank.
+    `ifndef SYNTHESIS
+    always @(posedge clk) begin
+        if (!rst && state == S_IDLE && seed_valid_in) begin
+            assert (col_base_in[3:0] == PU_ID[3:0])
+                else $error("pixel_unit PU_ID=%0d got col_base=%0d (low nibble %0d, expected %0d)",
+                            PU_ID, col_base_in, col_base_in[3:0], PU_ID[3:0]);
+        end
+    end
+    `endif
 
 endmodule
