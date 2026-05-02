@@ -62,23 +62,23 @@ $(BUILD)/.stamp_top_tb: $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
 # still fails the make target. Adjust the grep pattern per TB if needed.
 
 pu_tb: $(BUILD)/.stamp_pu_tb
-	$(VSIM) $(VSIMFLAGS) pixel_unit_tb 2>&1 | tee $(BUILD)/pu_tb.log
+	-$(VSIM) $(VSIMFLAGS) pixel_unit_tb 2>&1 | tee $(BUILD)/pu_tb.log
 	@grep -q "^PASS" $(BUILD)/pu_tb.log || (echo ">>> pu_tb FAILED"; exit 1)
 
 chain_tb: $(BUILD)/.stamp_chain_tb
-	$(VSIM) $(VSIMFLAGS) systolic_chain_tb 2>&1 | tee $(BUILD)/chain_tb.log
+	-$(VSIM) $(VSIMFLAGS) systolic_chain_tb 2>&1 | tee $(BUILD)/chain_tb.log
 	@grep -q "^PASS" $(BUILD)/chain_tb.log || (echo ">>> chain_tb FAILED"; exit 1)
 
 disp_tb: $(BUILD)/.stamp_disp_tb
-	$(VSIM) $(VSIMFLAGS) triangle_dispatcher_tb 2>&1 | tee $(BUILD)/disp_tb.log
+	-$(VSIM) $(VSIMFLAGS) triangle_dispatcher_tb 2>&1 | tee $(BUILD)/disp_tb.log
 	@grep -q "^PASS" $(BUILD)/disp_tb.log || (echo ">>> disp_tb FAILED"; exit 1)
 
 fifo_tb: $(BUILD)/.stamp_fifo_tb
-	$(VSIM) $(VSIMFLAGS) triangle_fifo_tb 2>&1 | tee $(BUILD)/fifo_tb.log
+	-$(VSIM) $(VSIMFLAGS) triangle_fifo_tb 2>&1 | tee $(BUILD)/fifo_tb.log
 	@grep -q "^PASS" $(BUILD)/fifo_tb.log || (echo ">>> fifo_tb FAILED"; exit 1)
 
 top_tb: $(BUILD)/.stamp_top_tb
-	$(VSIM) $(VSIMFLAGS) rasterizer_top_tb 2>&1 | tee $(BUILD)/top_tb.log
+	-$(VSIM) $(VSIMFLAGS) rasterizer_top_tb 2>&1 | tee $(BUILD)/top_tb.log
 	@grep -q "^PASS" $(BUILD)/top_tb.log || (echo ">>> top_tb FAILED"; exit 1)
 
 all: pu_tb chain_tb disp_tb fifo_tb top_tb
