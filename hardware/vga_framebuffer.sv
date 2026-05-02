@@ -38,32 +38,44 @@ module vga_framebuffer (
         .VGA_SYNC_n(VGA_SYNC_n)
     );
 
-    // 640x480 VGA screen
-    // Internal framebuffer is 256x240, scaled 2x to 512x480.
-    // Centered horizontally, so active region is screen x = 64..575.
-
-    logic [9:0] screen_x;
-    logic [7:0] fb_x;
-    logic [7:0] fb_y;
-    logic       in_fb_region;
-
-    assign screen_x     = hcount[10:1];       // 0..639
-    assign in_fb_region = (screen_x >= 10'd64) && (screen_x < 10'd576);
-
-    assign fb_x = hcount[10:2] - 8'd32;       // 0..255 inside region
-    assign fb_y = vcount[9:1];                // 0..239
-
-    // Address used INSIDE each PU:
-    //   fb_x[7:4] = local column-bank index inside that PU, 0..15
-    //   fb_y      = row, 0..239
+    // New vga_counters:
+    //   hcount = 0..799
+    //   visible x = 0..639
+    //   vcount = 0..524
+    //   visible y = 0..479
     //
-    // The bottom 4 bits of fb_x pick WHICH PU owns the pixel.
+    // Internal framebuffer:
+    //   256x240 scaled 2x to 512x480
+    //   horizontally centered: x = 64..575
+
+    logic [10:0] fb_x_tmp;
+    logic [7:0]  fb_x;
+    logic [7:0]  fb_y;
+    logic        in_fb_region;
+
+    assign in_fb_region = (hcount >= 11'd64)  &&
+                          (hcount <  11'd576) &&
+                          (vcount <  10'd480);
+
+    // fb_x = (hcount - 64) / 2
+    assign fb_x_tmp = (hcount - 11'd64) >> 1;
+    assign fb_x     = fb_x_tmp[7:0];
+
+    // fb_y = vcount / 2
+    assign fb_y = vcount[8:1];
+
+    // Address inside each PU:
+    //   fb_x[7:4] = local x-bank inside this PU
+    //   fb_y      = row
+    //
+    // PU select:
+    //   fb_x[3:0] = which PU owns this screen column
     assign vga_r_addr = {fb_x[7:4], fb_y};
 
     // VGA reads front buffer, rasterizer writes back buffer
     assign vga_r_buf_sel = ~fb_write_sel;
 
-    // Delay PU select by 1 cycle because pixel_unit VGA read is registered.
+    // Delay select/control by one cycle because pixel_unit VGA read is registered
     logic [3:0] pu_sel_q;
     logic       in_fb_region_q;
 
@@ -95,6 +107,7 @@ module vga_framebuffer (
 
 endmodule
 
+
 module vga_counters (
     input  logic        clk50,
     input  logic        reset,
@@ -123,6 +136,7 @@ module vga_counters (
             if (pixel_tick) begin
                 if (hcount == 11'd799) begin
                     hcount <= 11'd0;
+
                     if (vcount == 10'd524) begin
                         vcount     <= 10'd0;
                         frame_done <= 1'b1;
@@ -136,9 +150,9 @@ module vga_counters (
         end
     end
 
-    assign VGA_CLK    = pixel_tick;
-    assign VGA_HS     = ~((hcount >= 11'd656) && (hcount < 11'd752));
-    assign VGA_VS     = ~((vcount >= 10'd490) && (vcount < 10'd492));
+    assign VGA_CLK     = pixel_tick;
+    assign VGA_HS      = ~((hcount >= 11'd656) && (hcount < 11'd752));
+    assign VGA_VS      = ~((vcount >= 10'd490) && (vcount < 10'd492));
     assign VGA_BLANK_n = (hcount < 11'd640) && (vcount < 10'd480);
     assign VGA_SYNC_n  = 1'b0;
 
