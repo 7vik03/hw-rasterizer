@@ -1,16 +1,4 @@
 # Simulation Makefile — ModelSim 2024.2
-#
-# Requires ModelSim 2024.2 installed at:
-#   /tools/mentor/ModelSim/2024.2/modelsim_dlx/bin/
-#
-# Usage:
-#   make pu_tb         # compile + run pixel_unit_tb
-#   make chain_tb      # compile + run systolic_chain_tb
-#   make disp_tb       # compile + run triangle_dispatcher_tb
-#   make fifo_tb       # compile + run triangle_fifo_tb
-#   make top_tb        # compile + run rasterizer_top_tb
-#   make all           # run pu/chain/disp/fifo
-#   make clean         # delete build dir and stamp files
 
 MSIM_BIN := /tools/mentor/ModelSim/2024.2/modelsim_dlx/bin
 VLIB     := $(MSIM_BIN)/vlib
@@ -23,72 +11,79 @@ SIM_DIR := .
 BUILD   := build
 WORK    := $(BUILD)/work
 
-# -sv enables SystemVerilog; +incdir resolves `include "triangle_packet.svh"`
 VLOGFLAGS := -sv -work $(WORK) +incdir+$(HW_DIR)
-# -c = batch/command-line mode (no GUI); exit 0 on success, non-zero on $fatal
-VSIMFLAGS := -c -lib $(WORK) -do "run -all; quit"
+# -onfinish exit makes $finish return cleanly; quit -code propagates exit status
+VSIMFLAGS := -c -lib $(WORK) -onfinish exit \
+             -do "onerror {quit -code 1}; run -all; quit -code 0"
 
+# ---------------- library setup (order-only prereq) ----------------
 $(WORK):
+	mkdir -p $(BUILD)
 	$(VLIB) $(WORK)
 	$(VMAP) work $(WORK)
 
-# ---------------- stamp-based compile targets ----------------
-# Stamps live in BUILD/ so clean removes them with the library.
+# ---------------- compile stamps ----------------
+# `| $(WORK)` makes the work lib an order-only prereq so its mtime
+# (which vlog updates) doesn't trigger spurious recompiles.
 
-$(BUILD)/.stamp_pu_tb: $(WORK) $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv
+$(BUILD)/.stamp_pu_tb: $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv
 	@touch $@
 
-$(BUILD)/.stamp_chain_tb: $(WORK) $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/systolic_chain_tb.sv
+$(BUILD)/.stamp_chain_tb: $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/systolic_chain_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/systolic_chain_tb.sv
 	@touch $@
 
-$(BUILD)/.stamp_disp_tb: $(WORK) \
-        $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
-        $(SIM_DIR)/triangle_dispatcher_tb.sv
+$(BUILD)/.stamp_disp_tb: $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
+                         $(SIM_DIR)/triangle_dispatcher_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) \
 	    $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
 	    $(SIM_DIR)/triangle_dispatcher_tb.sv
-
 	@touch $@
 
-$(BUILD)/.stamp_fifo_tb: $(WORK) $(HW_DIR)/triangle_fifo.sv $(SIM_DIR)/triangle_fifo_tb.sv
+$(BUILD)/.stamp_fifo_tb: $(HW_DIR)/triangle_fifo.sv $(SIM_DIR)/triangle_fifo_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) $(HW_DIR)/triangle_fifo.sv $(SIM_DIR)/triangle_fifo_tb.sv
 	@touch $@
 
-# framebuffer module lives in framebuffer_new.sv
-$(BUILD)/.stamp_top_tb: $(WORK) \
-        $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
-        $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
-        $(HW_DIR)/vga_framebuffer.sv $(HW_DIR)/avalon_interface.sv \
-        $(HW_DIR)/framebuffer_new.sv $(SIM_DIR)/rasterizer_top_tb.sv
+# rasterizer_top pulls in everything; note no framebuffer_new.sv (you don't have it)
+$(BUILD)/.stamp_top_tb: $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
+                        $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
+                        $(HW_DIR)/vga_framebuffer.sv $(HW_DIR)/avalon_interface.sv \
+                        $(SIM_DIR)/rasterizer_top_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) \
 	    $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
 	    $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
 	    $(HW_DIR)/vga_framebuffer.sv $(HW_DIR)/avalon_interface.sv \
-	    $(HW_DIR)/framebuffer_new.sv $(SIM_DIR)/rasterizer_top_tb.sv
+	    $(SIM_DIR)/rasterizer_top_tb.sv
 	@touch $@
 
 # ---------------- run targets ----------------
+# tee to a log AND grep for PASS so a TB that prints "FAIL" but exits 0
+# still fails the make target. Adjust the grep pattern per TB if needed.
 
 pu_tb: $(BUILD)/.stamp_pu_tb
-	$(VSIM) $(VSIMFLAGS) pixel_unit_tb
+	$(VSIM) $(VSIMFLAGS) pixel_unit_tb 2>&1 | tee $(BUILD)/pu_tb.log
+	@grep -q "^PASS" $(BUILD)/pu_tb.log || (echo ">>> pu_tb FAILED"; exit 1)
 
 chain_tb: $(BUILD)/.stamp_chain_tb
-	$(VSIM) $(VSIMFLAGS) systolic_chain_tb
+	$(VSIM) $(VSIMFLAGS) systolic_chain_tb 2>&1 | tee $(BUILD)/chain_tb.log
+	@grep -q "^PASS" $(BUILD)/chain_tb.log || (echo ">>> chain_tb FAILED"; exit 1)
 
 disp_tb: $(BUILD)/.stamp_disp_tb
-	$(VSIM) $(VSIMFLAGS) triangle_dispatcher_tb
+	$(VSIM) $(VSIMFLAGS) triangle_dispatcher_tb 2>&1 | tee $(BUILD)/disp_tb.log
+	@grep -q "^PASS" $(BUILD)/disp_tb.log || (echo ">>> disp_tb FAILED"; exit 1)
 
 fifo_tb: $(BUILD)/.stamp_fifo_tb
-	$(VSIM) $(VSIMFLAGS) triangle_fifo_tb
+	$(VSIM) $(VSIMFLAGS) triangle_fifo_tb 2>&1 | tee $(BUILD)/fifo_tb.log
+	@grep -q "^PASS" $(BUILD)/fifo_tb.log || (echo ">>> fifo_tb FAILED"; exit 1)
 
 top_tb: $(BUILD)/.stamp_top_tb
-	$(VSIM) $(VSIMFLAGS) rasterizer_top_tb
+	$(VSIM) $(VSIMFLAGS) rasterizer_top_tb 2>&1 | tee $(BUILD)/top_tb.log
+	@grep -q "^PASS" $(BUILD)/top_tb.log || (echo ">>> top_tb FAILED"; exit 1)
 
 all: pu_tb chain_tb disp_tb fifo_tb
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) modelsim.ini transcript *.wlf
 
 .PHONY: all clean pu_tb chain_tb disp_tb fifo_tb top_tb
