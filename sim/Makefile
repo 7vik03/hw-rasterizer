@@ -12,19 +12,15 @@ BUILD   := build
 WORK    := $(BUILD)/work
 
 VLOGFLAGS := -sv -work $(WORK) +incdir+$(HW_DIR)
-# -onfinish exit makes $finish return cleanly; quit -code propagates exit status
 VSIMFLAGS := -c -lib $(WORK) -onfinish exit \
              -do "onerror {quit -code 1}; run -all; quit -code 0"
 
-# ---------------- library setup (order-only prereq) ----------------
 $(WORK):
 	mkdir -p $(BUILD)
 	$(VLIB) $(WORK)
 	$(VMAP) work $(WORK)
 
 # ---------------- compile stamps ----------------
-# `| $(WORK)` makes the work lib an order-only prereq so its mtime
-# (which vlog updates) doesn't trigger spurious recompiles.
 
 $(BUILD)/.stamp_pu_tb: $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv
@@ -45,7 +41,13 @@ $(BUILD)/.stamp_fifo_tb: $(HW_DIR)/triangle_fifo.sv $(SIM_DIR)/triangle_fifo_tb.
 	$(VLOG) $(VLOGFLAGS) $(HW_DIR)/triangle_fifo.sv $(SIM_DIR)/triangle_fifo_tb.sv
 	@touch $@
 
-# rasterizer_top pulls in everything; note no framebuffer_new.sv (you don't have it)
+$(BUILD)/.stamp_vga_tb: $(HW_DIR)/vga_framebuffer.sv \
+                        $(SIM_DIR)/vga_framebuffer_tb.sv | $(WORK)
+	$(VLOG) $(VLOGFLAGS) \
+	    $(HW_DIR)/vga_framebuffer.sv \
+	    $(SIM_DIR)/vga_framebuffer_tb.sv
+	@touch $@
+
 $(BUILD)/.stamp_top_tb: $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
                         $(HW_DIR)/triangle_dispatcher.sv $(HW_DIR)/triangle_fifo.sv \
                         $(HW_DIR)/vga_framebuffer.sv $(HW_DIR)/avalon_interface.sv \
@@ -58,32 +60,40 @@ $(BUILD)/.stamp_top_tb: $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
 	@touch $@
 
 # ---------------- run targets ----------------
-# tee to a log AND grep for PASS so a TB that prints "FAIL" but exits 0
-# still fails the make target. Adjust the grep pattern per TB if needed.
 
 pu_tb: $(BUILD)/.stamp_pu_tb
-	-$(VSIM) $(VSIMFLAGS) pixel_unit_tb 2>&1 | tee $(BUILD)/pu_tb.log
+	$(VSIM) $(VSIMFLAGS) pixel_unit_tb 2>&1 | tee $(BUILD)/pu_tb.log
 	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/pu_tb.log || (echo ">>> pu_tb FAILED"; exit 1)
+	@echo ">>> pu_tb PASSED"
 
 chain_tb: $(BUILD)/.stamp_chain_tb
-	-$(VSIM) $(VSIMFLAGS) systolic_chain_tb 2>&1 | tee $(BUILD)/chain_tb.log
+	$(VSIM) $(VSIMFLAGS) systolic_chain_tb 2>&1 | tee $(BUILD)/chain_tb.log
 	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/chain_tb.log || (echo ">>> chain_tb FAILED"; exit 1)
+	@echo ">>> chain_tb PASSED"
 
 disp_tb: $(BUILD)/.stamp_disp_tb
-	-$(VSIM) $(VSIMFLAGS) triangle_dispatcher_tb 2>&1 | tee $(BUILD)/disp_tb.log
+	$(VSIM) $(VSIMFLAGS) triangle_dispatcher_tb 2>&1 | tee $(BUILD)/disp_tb.log
 	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/disp_tb.log || (echo ">>> disp_tb FAILED"; exit 1)
+	@echo ">>> disp_tb PASSED"
 
 fifo_tb: $(BUILD)/.stamp_fifo_tb
-	-$(VSIM) $(VSIMFLAGS) triangle_fifo_tb 2>&1 | tee $(BUILD)/fifo_tb.log
+	$(VSIM) $(VSIMFLAGS) triangle_fifo_tb 2>&1 | tee $(BUILD)/fifo_tb.log
 	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/fifo_tb.log || (echo ">>> fifo_tb FAILED"; exit 1)
+	@echo ">>> fifo_tb PASSED"
+
+vga_tb: $(BUILD)/.stamp_vga_tb
+	$(VSIM) $(VSIMFLAGS) vga_framebuffer_tb 2>&1 | tee $(BUILD)/vga_tb.log
+	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/vga_tb.log || (echo ">>> vga_tb FAILED"; exit 1)
+	@echo ">>> vga_tb PASSED"
 
 top_tb: $(BUILD)/.stamp_top_tb
-	-$(VSIM) $(VSIMFLAGS) rasterizer_top_tb 2>&1 | tee $(BUILD)/top_tb.log
+	$(VSIM) $(VSIMFLAGS) rasterizer_top_tb 2>&1 | tee $(BUILD)/top_tb.log
 	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/top_tb.log || (echo ">>> top_tb FAILED"; exit 1)
+	@echo ">>> top_tb PASSED"
 
-all: pu_tb chain_tb disp_tb fifo_tb top_tb
+all: pu_tb chain_tb disp_tb fifo_tb vga_tb top_tb
 
 clean:
 	rm -rf $(BUILD) modelsim.ini transcript *.wlf
 
-.PHONY: all clean pu_tb chain_tb disp_tb fifo_tb top_tb
+.PHONY: all clean pu_tb chain_tb disp_tb fifo_tb vga_tb top_tb
