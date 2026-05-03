@@ -22,6 +22,13 @@ $(WORK):
 
 # ---------------- compile stamps ----------------
 
+$(BUILD)/.stamp_avalon_tb: $(HW_DIR)/avalon_interface.sv $(HW_DIR)/triangle_fifo.sv \
+                           $(SIM_DIR)/avalon_interface_tb.sv | $(WORK)
+	$(VLOG) $(VLOGFLAGS) \
+	    $(HW_DIR)/avalon_interface.sv $(HW_DIR)/triangle_fifo.sv \
+	    $(SIM_DIR)/avalon_interface_tb.sv
+	@touch $@
+
 $(BUILD)/.stamp_pu_tb: $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv | $(WORK)
 	$(VLOG) $(VLOGFLAGS) $(HW_DIR)/pixel_unit.sv $(SIM_DIR)/pixel_unit_tb.sv
 	@touch $@
@@ -60,6 +67,10 @@ $(BUILD)/.stamp_top_tb: $(HW_DIR)/rasterizer_top.sv $(HW_DIR)/pixel_unit.sv \
 	@touch $@
 
 # ---------------- run targets ----------------
+avalon_tb: $(BUILD)/.stamp_avalon_tb
+	$(VSIM) $(VSIMFLAGS) avalon_interface_tb 2>&1 | tee $(BUILD)/avalon_tb.log
+	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/avalon_tb.log || (echo ">>> avalon_tb FAILED"; exit 1)
+	@echo ">>> avalon_tb PASSED"
 
 pu_tb: $(BUILD)/.stamp_pu_tb
 	$(VSIM) $(VSIMFLAGS) pixel_unit_tb 2>&1 | tee $(BUILD)/pu_tb.log
@@ -91,9 +102,9 @@ top_tb: $(BUILD)/.stamp_top_tb
 	@grep -Eq '^(PASS|# ?PASS)' $(BUILD)/top_tb.log || (echo ">>> top_tb FAILED"; exit 1)
 	@echo ">>> top_tb PASSED"
 
-all: pu_tb chain_tb disp_tb fifo_tb vga_tb top_tb
+all: pu_tb chain_tb disp_tb fifo_tb vga_tb avalon_tb top_tb
 
 clean:
 	rm -rf $(BUILD) modelsim.ini transcript *.wlf
 
-.PHONY: all clean pu_tb chain_tb disp_tb fifo_tb vga_tb top_tb
+.PHONY: all clean pu_tb chain_tb disp_tb fifo_tb vga_tb avalon_tb top_tb
