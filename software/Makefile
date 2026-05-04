@@ -7,6 +7,9 @@ else
 KERNEL_SOURCE := /usr/src/linux
 PWD           := $(shell pwd)
 
+CC      := gcc
+CFLAGS  := -Wall -O2 -I$(PWD)/kernel
+
 .PHONY: default module userspace clean
 
 default: module userspace
@@ -15,11 +18,21 @@ default: module userspace
 module:
 	$(MAKE) -C $(KERNEL_SOURCE) SUBDIRS=$(PWD) modules
 
-# Build the userspace test program → rasterizer_test
-userspace: rasterizer_test
+# Build all userspace programs
+userspace: rasterizer_test demo
 
-rasterizer_test: rasterizer_test.c avalon_kernel.h
-	gcc -Wall -o rasterizer_test rasterizer_test.c
+# Minimal driver validation tool (no geometry / model deps)
+rasterizer_test: kernel/rasterizer_test.c kernel/avalon_kernel.h
+	$(CC) $(CFLAGS) -o rasterizer_test kernel/rasterizer_test.c
+
+# Full interactive demo
+DEMO_SRCS := userspace/main.c userspace/geometry.c userspace/model.c \
+             userspace/usbkeyboard.c
+DEMO_HDRS := userspace/geometry.h userspace/model.h \
+             userspace/usbkeyboard.h kernel/avalon_kernel.h
+
+demo: $(DEMO_SRCS) $(DEMO_HDRS)
+	$(CC) $(CFLAGS) -o demo $(DEMO_SRCS) -lm -lusb-1.0
 
 # Compile the device tree blob → socfpga.dtb
 socfpga.dtb: socfpga.dts
@@ -28,6 +41,6 @@ socfpga.dtb: socfpga.dts
 # Clean everything
 clean:
 	$(MAKE) -C $(KERNEL_SOURCE) SUBDIRS=$(PWD) clean
-	$(RM) rasterizer_test socfpga.dtb
+	$(RM) rasterizer_test demo socfpga.dtb
 
 endif
