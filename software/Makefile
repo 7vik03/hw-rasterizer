@@ -22,8 +22,8 @@ module:
 userspace: rasterizer_test demo
 
 # Minimal driver validation tool (no geometry / model deps)
-rasterizer_test: kernel/rasterizer_test.c kernel/avalon_kernel.h
-	$(CC) $(CFLAGS) -o rasterizer_test kernel/rasterizer_test.c
+rasterizer_test: userspace/rasterizer_test.c kernel/avalon_kernel.h
+	$(CC) $(CFLAGS) -o rasterizer_test userspace/rasterizer_test.c
 
 # Full interactive demo
 DEMO_SRCS := userspace/main.c userspace/geometry.c userspace/model.c \

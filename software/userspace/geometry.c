@@ -26,7 +26,7 @@
 
 // ---- screen constants -- must match hardware spec ----
 
-#define SCREEN_W   320
+#define SCREEN_W   256
 #define SCREEN_H   240
 #define FRAC_BITS  12
 #define FIXED_ONE  (1 << FRAC_BITS)   // 4096
@@ -301,7 +301,7 @@ int setup_triangle(const screen_vertex_t *v0,
     out->z_step_y = to_fixed(z_step_yf);
 
     // bbox_packed: bits [31:24]=ymax [23:16]=ymin [15:8]=xmax [7:0]=xmin
-    // hardware reads each field as 8 bits and zero-extends; xmax fits in
+    // hardware reads each field as 8 bits and zero-extends; x fits in
     // 8 bits because the internal framebuffer is 256 wide (max 255)
     out->bbox_packed = ((__u32)(bbox_ymax & 0xFF) << 24) |
                        ((__u32)(bbox_ymin & 0xFF) << 16) |

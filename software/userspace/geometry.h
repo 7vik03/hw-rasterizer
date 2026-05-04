@@ -63,7 +63,7 @@ uint8_t shade_face(vec3_t normal, vec3_t light_dir,
  * Returns 0 on success, -1 if the triangle is degenerate or invisible
  * (back-face culled, zero area, entirely off screen).
  *
- * Screen dimensions must match hardware: SCREEN_W=320, SCREEN_H=240.
+ * Screen dimensions must match hardware: SCREEN_W=256, SCREEN_H=240.
  * bbox_xmin is snapped to the nearest lower multiple of 16 to satisfy
  * the hardware invariant that each pixel unit owns columns
  * { PU_ID, PU_ID+16, PU_ID+32, … }.

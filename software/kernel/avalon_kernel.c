@@ -44,6 +44,7 @@ static void read_status(rasterizer_status_t *status)
     __u32 raw = ioread32(dev.virtbase + RAST_STATUS_OFFSET);
 
     status->fifo_level = raw & RAST_STATUS_LEVEL_MASK;
+    status->fifo_empty = (raw & RAST_STATUS_EMPTY_BIT) ? 1 : 0;
     status->fifo_full  = (raw & RAST_STATUS_FULL_BIT) ? 1 : 0;
 }
 

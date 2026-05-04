@@ -20,8 +20,9 @@ typedef struct {
 
 //use this in the triangle packet calcuation module later to get the fifo status from the function read_status
 typedef struct {
-    __u32 fifo_level;   //number of entries in the FIFO right now
-    __u32 fifo_full;    //1 if FIFO is full, 0 not full
+    __u32 fifo_level;   // bits [5:0] of STATUS
+    __u32 fifo_empty;   // bit  [6]   of STATUS
+    __u32 fifo_full;    // bit  [7]   of STATUS
 } rasterizer_status_t;
 
 //no tneeded rigth now
@@ -48,7 +49,8 @@ typedef union {
 #define RAST_CONTROL_OFFSET     0x4C
 
 // bit masks for the STATUS and CONTROL registers
-#define RAST_STATUS_LEVEL_MASK  0x7F    // bits [6:0] = fifo level
+#define RAST_STATUS_LEVEL_MASK  0x3F    // bits [5:0] = fifo level
+#define RAST_STATUS_EMPTY_BIT   (1<<6)  // bit  [6]   = fifo empty
 #define RAST_STATUS_FULL_BIT    (1<<7)  // bit  [7]   = fifo full
 
 // CONTROL register bit fields
