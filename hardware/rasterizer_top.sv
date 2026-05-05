@@ -29,13 +29,17 @@ module rasterizer_top (
     input  logic        clk,
     input  logic        rst,
 
-    // Avalon-MM slave from HPS
-    input  logic [6:0]  avalon_address,
-    input  logic        avalon_write,
-    input  logic [31:0] avalon_writedata,
-    output logic [31:0] avalon_readdata,
+    // Avalon-MM slave from HPS. Ports use the standard `avs_*` prefix so
+    // Platform Designer's Component Editor auto-detects them as one
+    // avalon_slave interface; `avs_waitrequest` is required by the
+    // template even when we never actually stall.
+    input  logic [6:0]  avs_address,
+    input  logic        avs_write,
+    input  logic [31:0] avs_writedata,
+    output logic [31:0] avs_readdata,
+    output logic        avs_waitrequest,
 
-    // VGA pins
+    // VGA pins (conduit, exported to top-level pads)
     output logic [7:0]  VGA_R,
     output logic [7:0]  VGA_G,
     output logic [7:0]  VGA_B,
@@ -45,6 +49,11 @@ module rasterizer_top (
     output logic        VGA_BLANK_n,
     output logic        VGA_SYNC_n
 );
+
+    // Reads are combinational and writes are accepted in one cycle
+    // (COMMIT silently drops if the FIFO is full -- software polls
+    // STATUS to back off), so the bus never needs to be stalled.
+    assign avs_waitrequest = 1'b0;
 
     localparam int N_PU = 16;
 
@@ -57,13 +66,15 @@ module rasterizer_top (
     logic             fifo_empty;
     logic [5:0]       fifo_level;
 
+    // Internal avalon_interface keeps its private `avalon_*` port names;
+    // the top-level avs_* signals just feed straight into them.
     avalon_interface u_avalon (
         .clk              (clk),
         .rst              (rst),
-        .avalon_address   (avalon_address),
-        .avalon_write     (avalon_write),
-        .avalon_writedata (avalon_writedata),
-        .avalon_readdata  (avalon_readdata),
+        .avalon_address   (avs_address),
+        .avalon_write     (avs_write),
+        .avalon_writedata (avs_writedata),
+        .avalon_readdata  (avs_readdata),
         .pop              (disp_pop),
         .pop_available    (disp_pop_available),
         .pop_data         (disp_pop_data),
