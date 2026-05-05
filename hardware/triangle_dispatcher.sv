@@ -31,7 +31,13 @@ module triangle_dispatcher #(
 
     output logic [N_PU-1:0]  valid_out,
     output triangle_packet_t packet_out,
-    input  logic [N_PU-1:0]  ready_in
+    input  logic [N_PU-1:0]  ready_in,
+
+    // High whenever rasterizer_top is mid-swap or mid-clear. Holds us
+    // in WAIT (no pop, no BCAST transition) so the FIFO advances and
+    // PU0 receives a seed only once the new back buffer is cleared.
+    // Tie 1'b0 in testbenches that don't model the swap path.
+    input  logic             block_dispatch
 );
 
     typedef enum logic [1:0] {
@@ -62,8 +68,11 @@ module triangle_dispatcher #(
         end else begin
             case (state)
                 WAIT: begin
-                    if (all_ready) pop <= 1'b1;
-                    if (pop && pop_available) begin
+                    if (all_ready && !block_dispatch) pop <= 1'b1;
+                    // Also gate the BCAST transition on !block_dispatch
+                    // so a pop request that was already in flight when
+                    // the block went high doesn't sneak a triangle past.
+                    if (pop && pop_available && !block_dispatch) begin
                         latched <= pop_data;
                         state   <= BCAST;
                     end
