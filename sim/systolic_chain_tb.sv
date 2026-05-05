@@ -81,11 +81,14 @@ module systolic_chain_tb;
                 .PU_ID      (gi),
                 .IS_LAST_PU ((gi == N_PU - 1) ? 1'b1 : 1'b0),
                 .FB_DEPTH   (FB_DEPTH),
-                .Z_DEPTH    (Z_DEPTH)
+                .Z_DEPTH    (Z_DEPTH),
+                // chain tb seeds z_mem itself via z_clear_all_pus_to_far()
+                .DO_INIT_CLEAR(1'b0)
             ) u_pu (
                 .clk            (clk),
                 .rst            (rst),
                 .ready          (pu_ready[gi]),
+                .z_clear_start  (1'b0),
                 .seed_valid_in  (chain_seed_valid[gi]),
                 .seed_e0_in     (chain_seed_e0[gi]),
                 .seed_e1_in     (chain_seed_e1[gi]),

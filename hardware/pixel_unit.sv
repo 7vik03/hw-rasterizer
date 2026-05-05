@@ -40,29 +40,44 @@
 // subsequent columns are derived locally by adding 16*a to the column-top
 // edge values stored at the IDLE->ACTIVE latch.
 //
-// Z-buffer init: z_mem powers up to 0. The z-test is `q_z <= z_rd`
-// (less-than-OR-EQUAL) so the very first write to any address always
-// succeeds even if z_rd reads 0. The minor cost is that two pixels with
-// identical depth both write (the second one wins), which is fine for
-// our use case -- z-fighting on coincident depths is invisible. This
-// avoids needing an explicit z-buffer clear pass at the start of each
-// frame.
+// Frame clear:
+//   S_INIT_CLEAR runs once after rst (DO_INIT_CLEAR=1) to put z_mem at
+//   16'hFFFF and BOTH color framebuffers at 8'h00, so the first VGA scan
+//   doesn't display BRAM power-up garbage. S_CLEAR is entered on each
+//   z_clear_start pulse (one per frame swap, driven by rasterizer_top)
+//   and writes z_mem and the *current back* color framebuffer (selected
+//   by fb_write_sel) to those same sentinels. Both states walk all
+//   Z_DEPTH addresses with a 12-bit clear_addr counter; ready stays low
+//   for the duration so the dispatcher holds off on new triangles.
+//
+//   The z-test still uses `<=` so two pixels with identical depth both
+//   write (second one wins) -- harmless on coincident depths.
 
 module pixel_unit #(
-    parameter int  PU_ID       = 0,
-    parameter bit  IS_LAST_PU  = 1'b0,
-    parameter int  FB_DEPTH    = 4096,
-    parameter int  Z_DEPTH     = 4096,
-    parameter int  Z_MSB       = 15,
-    parameter int  Z_LSB       = 0
+    parameter int  PU_ID          = 0,
+    parameter bit  IS_LAST_PU     = 1'b0,
+    parameter int  FB_DEPTH       = 4096,
+    parameter int  Z_DEPTH        = 4096,
+    parameter int  Z_MSB          = 15,
+    parameter int  Z_LSB          = 0,
+    // Run a full memory clear pass right after rst is deasserted.
+    // Synthesis builds always set this to 1 so we never trust BRAM
+    // power-up contents; unit testbenches set it to 0 to keep their
+    // existing "ready high one cycle after reset" expectations.
+    parameter bit  DO_INIT_CLEAR  = 1'b1
 ) (
     input  logic               clk,
     input  logic               rst,
 
     // high while in IDLE; the dispatcher uses an AND-reduction across all
     // 16 PUs to know the chain has fully drained before issuing the next
-    // triangle.
+    // triangle. Also drops low during init clear and per-frame clear
+    // passes so the dispatcher will not hand us a triangle mid-clear.
     output logic               ready,
+
+    // 1-cycle pulse from rasterizer_top after each framebuffer swap.
+    // Triggers a full Z-buffer + back-buffer clear pass.
+    input  logic               z_clear_start,
 
     // ---- systolic seed in (from previous PU, or from dispatcher for PU0) ----
     input  logic               seed_valid_in,
@@ -105,8 +120,18 @@ module pixel_unit #(
     input  logic               fb_write_sel
 );
 
-    typedef enum logic { S_IDLE, S_ACTIVE } state_t;
+    typedef enum logic [1:0] {
+        S_INIT_CLEAR,  // post-reset clear of z_mem + both fb_*_mem
+        S_IDLE,        // waiting for seed_valid_in or z_clear_start
+        S_ACTIVE,      // walking the triangle bbox
+        S_CLEAR        // per-frame clear of z_mem + back fb
+    } state_t;
     state_t state;
+
+    // Counter used by both clear states to walk all Z_DEPTH addresses.
+    logic [11:0] clear_addr;
+    logic        clear_done;
+    assign clear_done = (clear_addr == 12'(Z_DEPTH - 1));
 
     // ---- latched per-triangle constants ----
     logic signed [31:0] a0_q, a1_q, a2_q, z_step_x_q;
@@ -167,11 +192,9 @@ module pixel_unit #(
     logic [7:0]  fb_a_rd, fb_b_rd;
 
     // smaller-depth wins (Q12.12 z, low-bits-up). Combinational so the
-    // write decision lands on the same edge as the FB write.
-    //
-    // We use <= rather than < so the first write to any address always
-    // succeeds despite z_mem powering up to 0. See the file header for
-    // why this is safe.
+    // write decision lands on the same edge as the FB write. We use
+    // `<=` rather than `<` so coincident-depth pixels both write
+    // (second wins) -- harmless visually.
     logic z_pass;
     assign z_pass = q_valid && q_inside && (q_z <= z_rd);
 
@@ -182,12 +205,32 @@ module pixel_unit #(
         q_valid        <= 1'b0;
 
         if (rst) begin
-            state   <= S_IDLE;
-            cur_row <= '0;
+            state      <= DO_INIT_CLEAR ? S_INIT_CLEAR : S_IDLE;
+            cur_row    <= '0;
+            clear_addr <= '0;
         end else begin
             unique case (state)
+                S_INIT_CLEAR: begin
+                    // Walk every Z_DEPTH address writing all three mems
+                    // (z + both color buffers). Done in the memory-write
+                    // block below; here we just advance the counter.
+                    if (clear_done) begin
+                        state      <= S_IDLE;
+                        clear_addr <= '0;
+                    end else begin
+                        clear_addr <= clear_addr + 12'd1;
+                    end
+                end
+
                 S_IDLE: begin
-                    if (seed_valid_in) begin
+                    // z_clear_start has priority over seed_valid_in. In
+                    // normal operation the dispatcher's block_dispatch
+                    // input keeps these from arriving on the same cycle,
+                    // but the priority here is a safety net.
+                    if (z_clear_start) begin
+                        state      <= S_CLEAR;
+                        clear_addr <= '0;
+                    end else if (seed_valid_in) begin
                         // latch seed accumulators (live walk)
                         e0 <= seed_e0_in;
                         e1 <= seed_e1_in;
@@ -288,19 +331,42 @@ module pixel_unit #(
                     end
                 end
 
+                S_CLEAR: begin
+                    // Per-frame clear: z_mem + the back color buffer
+                    // (selected by fb_write_sel). Memory writes happen
+                    // in the block below.
+                    if (clear_done) begin
+                        state      <= S_IDLE;
+                        clear_addr <= '0;
+                    end else begin
+                        clear_addr <= clear_addr + 12'd1;
+                    end
+                end
+
                 default: state <= S_IDLE;
             endcase
         end
 
         // ---- Z-buffer port A: synchronous read every cycle ----
         z_rd <= z_mem[addr_now];
-        // ---- Z-buffer port B: conditional write at cycle N+1 ----
-        if (z_pass) begin
-            z_mem[q_addr] <= q_z;
-        end
 
-        // ---- color framebuffer write (same condition as z) ----
-        if (z_pass) begin
+        // ---- Memory writes ----
+        // Three priority tiers:
+        //   1. S_INIT_CLEAR: clear z_mem and BOTH color buffers (post-rst,
+        //      so VGA never scans BRAM power-up garbage).
+        //   2. S_CLEAR: clear z_mem and the back color buffer only
+        //      (the front one is being scanned out by VGA).
+        //   3. otherwise: normal rasterizer write gated by z_pass.
+        if (state == S_INIT_CLEAR) begin
+            z_mem   [clear_addr] <= 16'hFFFF;
+            fb_a_mem[clear_addr] <= 8'h00;
+            fb_b_mem[clear_addr] <= 8'h00;
+        end else if (state == S_CLEAR) begin
+            z_mem[clear_addr] <= 16'hFFFF;
+            if (fb_write_sel) fb_b_mem[clear_addr] <= 8'h00;
+            else              fb_a_mem[clear_addr] <= 8'h00;
+        end else if (z_pass) begin
+            z_mem[q_addr] <= q_z;
             if (fb_write_sel) fb_b_mem[q_addr] <= q_color;
             else              fb_a_mem[q_addr] <= q_color;
             p_write <= 1'b1;

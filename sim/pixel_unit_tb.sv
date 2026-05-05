@@ -32,11 +32,15 @@ module pixel_unit_tb;
         .PU_ID(PU_ID),
         .IS_LAST_PU(1'b0),
         .FB_DEPTH(FB_DEPTH),
-        .Z_DEPTH(Z_DEPTH)
+        .Z_DEPTH(Z_DEPTH),
+        // unit test pokes z_mem directly via the z_clear_to_far task
+        // and expects ready high one cycle after reset
+        .DO_INIT_CLEAR(1'b0)
     ) dut (
         .clk(clk),
         .rst(rst),
         .ready(ready),
+        .z_clear_start(1'b0),
 
         .seed_valid_in(seed_valid_in),
         .seed_e0_in(seed_e0_in),
@@ -86,11 +90,13 @@ module pixel_unit_tb;
         .PU_ID(PU_ID),
         .IS_LAST_PU(1'b1),
         .FB_DEPTH(FB_DEPTH),
-        .Z_DEPTH(Z_DEPTH)
+        .Z_DEPTH(Z_DEPTH),
+        .DO_INIT_CLEAR(1'b0)
     ) dut_last (
         .clk(clk),
         .rst(rst),
         .ready(),
+        .z_clear_start(1'b0),
 
         .seed_valid_in(last_seed_valid_in),
         .seed_e0_in(seed_e0_in),

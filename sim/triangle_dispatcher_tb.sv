@@ -61,7 +61,8 @@ module triangle_dispatcher_tb;
         .pop_ACK(pop_ACK),
         .valid_out(valid_out),
         .packet_out(packet_out),
-        .ready_in(ready_in)
+        .ready_in(ready_in),
+        .block_dispatch(1'b0)
     );
 
     initial begin

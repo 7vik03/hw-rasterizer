@@ -77,6 +77,11 @@ module rasterizer_top (
     triangle_packet_t pu_packet;
     logic [N_PU-1:0]  pu_ready;
 
+    // High while we're swapping framebuffers and clearing the new back
+    // buffer. Holds the dispatcher in WAIT so no triangle is consumed
+    // while the chain is offline.
+    logic block_dispatch;
+
     triangle_dispatcher #(.N_PU(N_PU)) u_dispatcher (
         .clk           (clk),
         .rst           (rst),
@@ -86,7 +91,8 @@ module rasterizer_top (
         .pop_ACK       (disp_pop_ACK),
         .valid_out     (pu_valid_seed),
         .packet_out    (pu_packet),
-        .ready_in      (pu_ready)
+        .ready_in      (pu_ready),
+        .block_dispatch(block_dispatch)
     );
 
     // The dispatcher broadcasts valid_out across N_PU bits, but in the
@@ -122,6 +128,11 @@ module rasterizer_top (
     logic        fb_write_sel;
     logic [7:0]  pu_vga_rdata [N_PU];
 
+    // 1-cycle pulse to all PUs the moment we toggle fb_write_sel. Each
+    // PU runs ~Z_DEPTH cycles of S_CLEAR after seeing it, writing the
+    // far sentinel into z_mem and 0x00 into the new back color buffer.
+    logic z_clear_start;
+
     // observability: each PU exposes its committed pixel writes; we don't
     // wire these to anything in the top, but they're useful in the
     // chain testbench. Aggregate so synthesis doesn't strip them.
@@ -150,6 +161,7 @@ module rasterizer_top (
                 .clk            (clk),
                 .rst            (rst),
                 .ready          (pu_ready[gi]),
+                .z_clear_start  (z_clear_start),
 
                 .seed_valid_in  (chain_seed_valid[gi]),
                 .seed_e0_in     (chain_seed_e0[gi]),
@@ -206,37 +218,64 @@ module rasterizer_top (
         end
     endgenerate
 
-    // ---------------- Frame parity / double-buffer toggle ----------------
-    // Toggle which framebuffer the rasterizer writes to (and which one
-    // VGA scans out) at the end of each frame. Two conditions must hold
-    // at the same time:
-    //   1. frame_done is pulsing  (VGA finished scanning a frame)
-    //   2. chain_idle is high     (no PU is mid-rasterization)
-    // If a triangle is still in flight when frame_done fires, we hold
-    // the swap pending until the chain drains. swap_pending captures
-    // that case: the swap will fire on the first cycle where chain_idle
-    // is high after the pulse.
+    // ---------------- Frame swap + back-buffer/z clear ----------------
+    // Three-state FSM: each VGA frame, after the chain drains, we
+    // toggle fb_write_sel and pulse z_clear_start. PUs run a ~4096-cycle
+    // clear pass writing the far sentinel into z_mem and 0x00 into the
+    // new back color buffer. block_dispatch is held the whole time so
+    // no triangle reaches the chain mid-clear.
     //
-    // This avoids tearing where the rasterizer would write to the buffer
-    // VGA just started reading.
-    logic frame_done;
-    logic swap_pending;
+    // CLEARING uses a counter rather than chain_idle because chain_idle
+    // is still high for one cycle after we leave SW_ARM (the PUs latch
+    // S_CLEAR on the next edge); polling chain_idle would exit early.
+    // CLEAR_CYCLES is sized to (Z_DEPTH + small margin); ~82 us at
+    // 50 MHz, well inside the ~1 ms VGA vblank window.
+    localparam int CLEAR_CYCLES = 4100;
+
+    typedef enum logic [1:0] {
+        SW_IDLE,      // wait for frame_done
+        SW_ARM,       // wait for chain_idle high
+        SW_CLEARING   // counter running, PUs in S_CLEAR
+    } swap_state_t;
+
+    swap_state_t sw_state;
+    logic [12:0] clear_cnt;
+    logic        frame_done;
+
+    assign block_dispatch = (sw_state != SW_IDLE);
 
     always_ff @(posedge clk) begin
-        if (rst) begin
-            fb_write_sel <= 1'b0;
-            swap_pending <= 1'b0;
-        end else begin
-            // latch the request when frame_done pulses
-            if (frame_done) swap_pending <= 1'b1;
+        z_clear_start <= 1'b0;
 
-            // perform the swap as soon as both: a request is pending AND
-            // the chain has drained. clear the pending flag in the same
-            // cycle we swap.
-            if (swap_pending && chain_idle) begin
-                fb_write_sel <= ~fb_write_sel;
-                swap_pending <= 1'b0;
-            end
+        if (rst) begin
+            sw_state     <= SW_IDLE;
+            fb_write_sel <= 1'b0;
+            clear_cnt    <= '0;
+        end else begin
+            unique case (sw_state)
+                SW_IDLE: begin
+                    if (frame_done) sw_state <= SW_ARM;
+                end
+
+                SW_ARM: begin
+                    // Hold here until the last triangle drains. Once
+                    // chain_idle is high we toggle fb_write_sel and
+                    // kick off the clear in one go.
+                    if (chain_idle) begin
+                        fb_write_sel  <= ~fb_write_sel;
+                        z_clear_start <= 1'b1;
+                        clear_cnt     <= 13'(CLEAR_CYCLES);
+                        sw_state      <= SW_CLEARING;
+                    end
+                end
+
+                SW_CLEARING: begin
+                    if (clear_cnt == 0) sw_state <= SW_IDLE;
+                    else                clear_cnt <= clear_cnt - 13'd1;
+                end
+
+                default: sw_state <= SW_IDLE;
+            endcase
         end
     end
     vga_framebuffer u_vga (
