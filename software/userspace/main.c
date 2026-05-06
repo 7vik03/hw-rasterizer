@@ -273,8 +273,8 @@ int main(int argc, char *argv[])
 {
     // ---- build model library ----
 
-    static model_t models[10];
-    int num_models = 9;
+    static model_t models[11];
+    int num_models = 10;
 
     model_make_cube(&models[0]);
     model_make_icosphere(&models[1], 1);         // 80 faces
@@ -285,12 +285,13 @@ int main(int argc, char *argv[])
     model_make_lego(&models[6]);                 // Lego 2x4 brick ~204 faces
     model_make_star(&models[7]);                 // extruded star ~56 faces
     model_make_rocket(&models[8]);               // rocket ~148 faces
+    model_make_minifigure(&models[9]);           // Lego minifigure ~170 faces
 
     if (argc >= 2) {
-        if (model_load_obj(&models[9], argv[1]) == 0) {
+        if (model_load_obj(&models[10], argv[1]) == 0) {
             printf("Loaded %s: %d verts, %d faces\n",
-                   argv[1], models[9].num_verts, models[9].num_faces);
-            num_models = 10;
+                   argv[1], models[10].num_verts, models[10].num_faces);
+            num_models = 11;
         } else {
             fprintf(stderr, "Warning: could not load %s\n", argv[1]);
         }
@@ -329,7 +330,8 @@ int main(int argc, char *argv[])
     printf("  7       - lego brick\n");
     printf("  8       - star\n");
     printf("  9       - rocket\n");
-    if (num_models > 9) printf("  0       - %s\n", models[9].name);
+    printf("  0       - minifigure\n");
+    if (num_models > 10) printf("  (OBJ)   - %s\n", models[10].name);
     printf("  r       - reset rotation\n");
     printf("  SPACE   - toggle auto-rotate\n");
     printf("  ESC/q   - quit\n");
@@ -377,7 +379,7 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_7]) current_model = 6;
         if (g_key_pressed[KEY_8]) current_model = 7;
         if (g_key_pressed[KEY_9]) current_model = 8;
-        if (g_key_pressed[KEY_0] && num_models > 9) current_model = 9;
+        if (g_key_pressed[KEY_0]) current_model = 9;
         if (g_key_pressed[KEY_R]) {
             rot_x = 25.0f; rot_y = 45.0f; rot_z = 0.0f; cam_dist = 4.0f;
         }

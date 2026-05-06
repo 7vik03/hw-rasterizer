@@ -68,6 +68,9 @@ void model_make_star(model_t *m);
 /* Rocket: nose cone + body + 4 fins -- ~148 faces */
 void model_make_rocket(model_t *m);
 
+/* Lego minifigure in T-pose: legs, torso, arms, round head -- ~170 faces */
+void model_make_minifigure(model_t *m);
+
 /* ------------------------------------------------------------------ */
 /* OBJ loader (triangles only; quads split into two triangles)        */
 /* ------------------------------------------------------------------ */

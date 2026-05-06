@@ -824,3 +824,84 @@ void model_make_rocket(model_t *m)
         m->faces[m->num_faces++] = (face_t){{ b+4, b+1, b+0 }};
     }
 }
+
+// ---- Lego minifigure ----
+//
+// Classic T-pose minifigure assembled from boxes and cylinders.
+// Parts (y increases upward, figure centred at origin):
+//   legs   : two boxes side by side hanging down
+//   hips   : wide short box connecting legs
+//   torso  : taller box, slightly narrower than hips
+//   arms   : two small boxes out to the sides at shoulder height
+//   hands  : small cylinders at arm ends
+//   neck   : short cylinder
+//   head   : cylinder (the iconic round head)
+//   stud   : tiny cylinder on top of head
+// Total ~170 faces.
+
+void model_make_minifigure(model_t *m)
+{
+    memset(m, 0, sizeof(*m));
+    strncpy(m->name, "minifig", sizeof(m->name) - 1);
+
+    // ---- legs ----
+    float leg_w   = 0.18f, leg_d = 0.18f;
+    float leg_bot = -1.0f, leg_top = -0.35f;
+    float leg_sep = 0.21f;   // centre-to-centre x offset
+    // left leg
+    add_box(m, -leg_sep-leg_w, leg_bot, -leg_d,
+                -leg_sep+leg_w, leg_top,  leg_d);
+    // right leg
+    add_box(m,  leg_sep-leg_w, leg_bot, -leg_d,
+                leg_sep+leg_w, leg_top,  leg_d);
+
+    // ---- hips ----
+    float hip_w = 0.42f, hip_h = 0.18f, hip_d = 0.18f;
+    add_box(m, -hip_w, leg_top, -hip_d, hip_w, leg_top+hip_h, hip_d);
+
+    // ---- torso ----
+    float tor_w = 0.36f, tor_d = 0.16f;
+    float tor_bot = leg_top + hip_h;
+    float tor_top = tor_bot + 0.52f;
+    add_box(m, -tor_w, tor_bot, -tor_d, tor_w, tor_top, tor_d);
+
+    // ---- arms (horizontal boxes out from shoulders) ----
+    float arm_w = 0.22f, arm_h = 0.14f, arm_d = 0.13f;
+    float arm_y0 = tor_top - 0.16f;
+    float arm_y1 = arm_y0  - arm_h;
+    // left arm
+    add_box(m, -(tor_w + arm_w*2), arm_y1, -arm_d,
+               -(tor_w),           arm_y0,  arm_d);
+    // right arm
+    add_box(m,  tor_w,             arm_y1, -arm_d,
+                tor_w + arm_w*2,   arm_y0,  arm_d);
+
+    // ---- hands (small cylinders at arm ends) ----
+    int   hand_seg = 6;
+    float hand_r   = 0.09f;
+    float hand_cx_l = -(tor_w + arm_w*2 + hand_r);
+    float hand_cx_r =  (tor_w + arm_w*2 + hand_r);
+    float hand_cy   = (arm_y0 + arm_y1) * 0.5f;
+    add_cylinder(m, hand_cx_l, hand_cy - hand_r, hand_cy + hand_r,
+                 0.0f, hand_r, hand_seg);
+    add_cylinder(m, hand_cx_r, hand_cy - hand_r, hand_cy + hand_r,
+                 0.0f, hand_r, hand_seg);
+
+    // ---- neck ----
+    float neck_r   = 0.10f;
+    float neck_bot = tor_top;
+    float neck_top = tor_top + 0.10f;
+    add_cylinder(m, 0.0f, neck_bot, neck_top, 0.0f, neck_r, 6);
+
+    // ---- head (wider cylinder) ----
+    float head_r   = 0.30f;
+    float head_bot = neck_top;
+    float head_top = head_bot + 0.38f;
+    add_cylinder(m, 0.0f, head_bot, head_top, 0.0f, head_r, 10);
+
+    // ---- stud on top of head ----
+    float stud_r   = 0.10f;
+    float stud_bot = head_top;
+    float stud_top = head_top + 0.08f;
+    add_cylinder(m, 0.0f, stud_bot, stud_top, 0.0f, stud_r, 6);
+}
