@@ -50,6 +50,24 @@ void model_make_icosphere(model_t *m, int subdivisions);
 void model_make_torus(model_t *m, int major_seg, int minor_seg,
                       float R, float r);
 
+/*
+ * Utah teapot, tessellated from the 32 bicubic Bezier patches at
+ * 4x4 samples per patch -- ~1024 triangles, fits in MODEL_MAX_FACES.
+ */
+void model_make_teapot(model_t *m);
+
+/* Brilliant-cut diamond gem -- ~80 faces */
+void model_make_diamond(model_t *m);
+
+/* Lego 2x4 brick with 8 cylindrical studs -- ~204 faces */
+void model_make_lego(model_t *m);
+
+/* Extruded 5-pointed star -- ~56 faces */
+void model_make_star(model_t *m);
+
+/* Rocket: nose cone + body + 4 fins -- ~148 faces */
+void model_make_rocket(model_t *m);
+
 /* ------------------------------------------------------------------ */
 /* OBJ loader (triangles only; quads split into two triangles)        */
 /* ------------------------------------------------------------------ */

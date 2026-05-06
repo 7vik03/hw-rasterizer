@@ -144,15 +144,15 @@ static void poll_keys(void)
 
     g_pkt_prev = g_pkt_cur;  // save last frame for edge detection
 
-    // non-blocking transfer: 1 ms timeout returns whatever is ready now
-    libusb_interrupt_transfer(g_keyboard, g_endpoint,
-                              (unsigned char *)&g_pkt_cur,
-                              sizeof(g_pkt_cur),
-                              &transferred, 1);
-
-    // no data this frame -> treat as all keys released
-    if (transferred != (int)sizeof(g_pkt_cur))
-        memset(&g_pkt_cur, 0, sizeof(g_pkt_cur));
+    // non-blocking transfer: 16 ms timeout matches frame period.
+    // only update g_pkt_cur when a full report arrives; on timeout the
+    // previous report is kept so held keys remain set in g_keys[].
+    int rc = libusb_interrupt_transfer(g_keyboard, g_endpoint,
+                                       (unsigned char *)&g_pkt_cur,
+                                       sizeof(g_pkt_cur),
+                                       &transferred, 16);
+    if (rc != 0 || transferred != (int)sizeof(g_pkt_cur))
+        g_pkt_cur = g_pkt_prev;  // no new report: preserve last known state
 
     memset(g_keys,        0, sizeof(g_keys));
     memset(g_key_pressed, 0, sizeof(g_key_pressed));
@@ -273,19 +273,24 @@ int main(int argc, char *argv[])
 {
     // ---- build model library ----
 
-    static model_t models[5];
-    int num_models = 4;
+    static model_t models[10];
+    int num_models = 9;
 
     model_make_cube(&models[0]);
     model_make_icosphere(&models[1], 1);         // 80 faces
     model_make_icosphere(&models[2], 2);         // 320 faces
     model_make_torus(&models[3], 12, 8, 0.7f, 0.3f);
+    model_make_teapot(&models[4]);               // Utah teapot ~1024 faces
+    model_make_diamond(&models[5]);              // gem ~80 faces
+    model_make_lego(&models[6]);                 // Lego 2x4 brick ~204 faces
+    model_make_star(&models[7]);                 // extruded star ~56 faces
+    model_make_rocket(&models[8]);               // rocket ~148 faces
 
     if (argc >= 2) {
-        if (model_load_obj(&models[4], argv[1]) == 0) {
+        if (model_load_obj(&models[9], argv[1]) == 0) {
             printf("Loaded %s: %d verts, %d faces\n",
-                   argv[1], models[4].num_verts, models[4].num_faces);
-            num_models = 5;
+                   argv[1], models[9].num_verts, models[9].num_faces);
+            num_models = 10;
         } else {
             fprintf(stderr, "Warning: could not load %s\n", argv[1]);
         }
@@ -315,8 +320,16 @@ int main(int argc, char *argv[])
     printf("  w/s     - tilt up/down\n");
     printf("  a/d     - rotate left/right\n");
     printf("  +/-     - zoom in/out\n");
-    printf("  1-4     - cube / sphere_lo / sphere_med / torus\n");
-    if (num_models > 4) printf("  5       - %s\n", models[4].name);
+    printf("  1       - cube\n");
+    printf("  2       - sphere lo\n");
+    printf("  3       - sphere med\n");
+    printf("  4       - torus\n");
+    printf("  5       - teapot\n");
+    printf("  6       - diamond\n");
+    printf("  7       - lego brick\n");
+    printf("  8       - star\n");
+    printf("  9       - rocket\n");
+    if (num_models > 9) printf("  0       - %s\n", models[9].name);
     printf("  r       - reset rotation\n");
     printf("  SPACE   - toggle auto-rotate\n");
     printf("  ESC/q   - quit\n");
@@ -359,7 +372,12 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_2]) current_model = 1;
         if (g_key_pressed[KEY_3]) current_model = 2;
         if (g_key_pressed[KEY_4]) current_model = 3;
-        if (g_key_pressed[KEY_5] && num_models > 4) current_model = 4;
+        if (g_key_pressed[KEY_5]) current_model = 4;
+        if (g_key_pressed[KEY_6]) current_model = 5;
+        if (g_key_pressed[KEY_7]) current_model = 6;
+        if (g_key_pressed[KEY_8]) current_model = 7;
+        if (g_key_pressed[KEY_9]) current_model = 8;
+        if (g_key_pressed[KEY_0] && num_models > 9) current_model = 9;
         if (g_key_pressed[KEY_R]) {
             rot_x = 25.0f; rot_y = 45.0f; rot_z = 0.0f; cam_dist = 4.0f;
         }
