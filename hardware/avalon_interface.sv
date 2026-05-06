@@ -56,7 +56,8 @@ module avalon_interface (
     // -------- visible status (also exposed via STATUS register) --------
     output logic            fifo_full,
     output logic            fifo_empty,
-    output logic [5:0]      fifo_level
+    output logic [5:0]      fifo_level,
+    output logic present_req
 );
 
     // -----------------------------------------------------------------
@@ -137,10 +138,12 @@ module avalon_interface (
     always_ff @(posedge clk) begin
         // default: commit pulse is one cycle wide
         fifo_push <= 1'b0;
+        present_req<=1'b0;
 
         if (rst) begin
             for (int i = 0; i < 17; i++) stage[i] <= '0;
             control_reg <= '0;
+            present_req<=1'b0;
         end
         else if (avalon_write) begin
             if (avalon_address >= ADDR_PACKET_LO &&
@@ -155,6 +158,8 @@ module avalon_interface (
             end
             else if (avalon_address == ADDR_CONTROL) begin
                 control_reg <= avalon_writedata;
+                if (avalon_writedata[0])
+                    present_req<=1'b1;
             end
         end
     end
