@@ -368,9 +368,14 @@ int main(int argc, char *argv[])
 
         // ---- submit triangles to hardware ----
         int n = render_frame(fd, &models[current_model],
-                             rot_x, rot_y, rot_z, cam_dist);
+                             rot_x, rot_y, rot_z, cam_dist);    
         if (n < 0) {
             fprintf(stderr, "render_frame error, aborting\n");
+            break;
+        }
+
+        if (ioctl(fd, RASTERIZER_PRESENT) < 0) {
+            fprintf(stderr, "present failed: %s\n", strerror(errno));
             break;
         }
 
