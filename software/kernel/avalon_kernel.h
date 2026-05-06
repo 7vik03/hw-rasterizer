@@ -47,7 +47,7 @@ typedef union {
 #define RAST_COMMIT_OFFSET      0x44
 #define RAST_STATUS_OFFSET      0x48
 #define RAST_CONTROL_OFFSET     0x4C
-
+#define RAST_CTRL_PRESENT_BIT (1<<0)
 // bit masks for the STATUS and CONTROL registers
 #define RAST_STATUS_LEVEL_MASK  0x3F    // bits [5:0] = fifo level
 #define RAST_STATUS_EMPTY_BIT   (1<<6)  // bit  [6]   = fifo empty
@@ -66,5 +66,5 @@ typedef union {
 #define RASTERIZER_STATUS       _IOR(RASTERIZER_MAGIC, 2, rasterizer_arg_t *)
 #define RASTERIZER_SET_CONTROL  _IOW(RASTERIZER_MAGIC, 3, rasterizer_arg_t *)
 #define RASTERIZER_GET_CONTROL  _IOR(RASTERIZER_MAGIC, 4, rasterizer_arg_t *)
-
+#define RASTERIZER_PRESENT _IO(RASTERIZER_MAGIC, 5)
 #endif /* _RASTERIZER_H */
