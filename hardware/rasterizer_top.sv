@@ -65,6 +65,8 @@ module rasterizer_top (
     logic             fifo_full;
     logic             fifo_empty;
     logic [5:0]       fifo_level;
+    logic present_req;
+    logic present_pending;
 
     // Internal avalon_interface keeps its private `avalon_*` port names;
     // the top-level avs_* signals just feed straight into them.
@@ -81,7 +83,8 @@ module rasterizer_top (
         .pop_ACK          (disp_pop_ACK),
         .fifo_full        (fifo_full),
         .fifo_empty       (fifo_empty),
-        .fifo_level       (fifo_level)
+        .fifo_level       (fifo_level),
+        .present_req      (present_req)
     );
 
     logic [N_PU-1:0]  pu_valid_seed;
@@ -253,7 +256,7 @@ module rasterizer_top (
     logic [12:0] clear_cnt;
     logic        frame_done;
 
-    assign block_dispatch = (sw_state != SW_IDLE);
+    assign block_dispatch = (sw_state != SW_IDLE) || present_pending;
 
     always_ff @(posedge clk) begin
         z_clear_start <= 1'b0;
@@ -262,10 +265,13 @@ module rasterizer_top (
             sw_state     <= SW_IDLE;
             fb_write_sel <= 1'b0;
             clear_cnt    <= '0;
+            present_pending<=1'b0;
         end else begin
+            if (present_req)
+                present_pending<=1'b1;
             unique case (sw_state)
                 SW_IDLE: begin
-                    if (frame_done) sw_state <= SW_ARM;
+                    if (present_pending && frame_done && fifo_empty) sw_state <= SW_ARM;
                 end
 
                 SW_ARM: begin
@@ -276,6 +282,7 @@ module rasterizer_top (
                         fb_write_sel  <= ~fb_write_sel;
                         z_clear_start <= 1'b1;
                         clear_cnt     <= 13'(CLEAR_CYCLES);
+                        present_pending<=1'b0;
                         sw_state      <= SW_CLEARING;
                     end
                 end
