@@ -4,7 +4,7 @@ obj-m := avalon_kernel.o
 
 else
 
-KERNEL_SOURCE := /usr/src/linux
+KERNEL_SOURCE := /usr/src/linux-headers-4.19.0
 PWD           := $(shell pwd)
 
 CC      := gcc
@@ -16,7 +16,7 @@ default: module userspace
 
 # Build the kernel module → avalon_kernel.ko
 module:
-	$(MAKE) -C $(KERNEL_SOURCE) SUBDIRS=$(PWD) modules
+	$(MAKE) -C $(KERNEL_SOURCE) M=$(PWD)/kernel modules
 
 # Build all userspace programs
 userspace: rasterizer_test demo
@@ -40,7 +40,7 @@ socfpga.dtb: socfpga.dts
 
 # Clean everything
 clean:
-	$(MAKE) -C $(KERNEL_SOURCE) SUBDIRS=$(PWD) clean
+	$(MAKE) -C $(KERNEL_SOURCE) M=$(PWD)/kernel clean
 	$(RM) rasterizer_test demo socfpga.dtb
 
 endif
