@@ -226,7 +226,8 @@ static int render_frame(int fd, const model_t *model,
     mat4_t rz        = rotation_z(rot_z);
     mat4_t ry        = rotation_y(rot_y);
     mat4_t rx        = rotation_x(rot_x);
-    mat4_t model_mat = mat4_mul(&rz, &mat4_mul(&ry, &rx));
+    mat4_t ryx       = mat4_mul(&ry, &rx);
+    mat4_t model_mat = mat4_mul(&rz, &ryx);
     mat4_t vp        = mat4_mul(&proj, &view);
     mat4_t mvp       = mat4_mul(&vp, &model_mat);
 

@@ -1,0 +1,131 @@
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[15].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[14].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[13].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[12].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[11].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[10].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[9].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[8].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[7].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[6].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[5].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[4].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[3].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[2].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[1].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|triangle_dispatcher:u_dispatcher|state
+Name state.WAIT state.COOLDOWN state.BCAST 
+state.WAIT 0 0 0 
+state.BCAST 1 0 1 
+state.COOLDOWN 1 1 0 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|sw_state
+Name sw_state.SW_IDLE sw_state.SW_CLEARING sw_state.SW_ARM 
+sw_state.SW_IDLE 0 0 0 
+sw_state.SW_ARM 1 0 1 
+sw_state.SW_CLEARING 1 1 0 
+
+State Machine - |soc_system_top|soc_system:soc_system0|rasterizer_top:rasterizer_0|pixel_unit:g_pu[0].u_pu|state
+Name state.S_CLEAR state.S_ACTIVE state.S_IDLE state.S_INIT_CLEAR 
+state.S_INIT_CLEAR 0 0 0 0 
+state.S_IDLE 0 0 1 1 
+state.S_ACTIVE 0 1 0 1 
+state.S_CLEAR 1 0 0 1 
+
+State Machine - |soc_system_top|soc_system:soc_system0|soc_system_mm_interconnect_0:mm_interconnect_0|altera_merlin_burst_adapter:rasterizer_0_avalon_slave_0_burst_adapter|altera_merlin_burst_adapter_13_1:altera_merlin_burst_adapter_13_1.burst_adapter|state
+Name state.ST_IDLE state.ST_UNCOMP_WR_SUBBURST state.ST_UNCOMP_TRANS state.ST_COMP_TRANS 
+state.ST_IDLE 0 0 0 0 
+state.ST_COMP_TRANS 1 0 0 1 
+state.ST_UNCOMP_TRANS 1 0 1 0 
+state.ST_UNCOMP_WR_SUBBURST 1 1 0 0 
