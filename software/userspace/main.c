@@ -380,6 +380,53 @@ int main(int argc, char *argv[])
             break;
         }
 
+        // ---- wait for hardware to finish swapping + clearing ----
+        // STATUS bit [8] (swap_busy) is driven by the FPGA clock, so
+        // there are a handful of HPS cycles between iowrite32() of
+        // PRESENT returning and swap_busy actually going high. A
+        // single-phase "poll until 0" loop would race that rising
+        // edge -- the first STATUS read can land before the FPGA has
+        // latched present_pending and exit immediately, letting
+        // render_frame() of frame N+1 refill the FIFO before the swap
+        // fires.
+        //
+        // Two-phase poll closes that race:
+        //   Phase 1: spin until swap_busy == 1 (hardware acknowledged)
+        //   Phase 2: spin until swap_busy == 0 (swap + clear complete)
+        //
+        // Phase 1 typically resolves in microseconds (the FPGA clock
+        // is ~50 MHz vs. ioctl round-trip latency), so no sleep needed.
+        // Phase 2 waits for a full VGA frame (~16 ms), so usleep(100)
+        // between polls keeps CPU usage in check.
+        rasterizer_arg_t ra;
+        int present_failed = 0;
+
+        // Phase 1: wait for swap_busy to assert
+        do {
+            memset(&ra, 0, sizeof(ra));
+            if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0) {
+                fprintf(stderr, "status poll (assert) failed: %s\n",
+                        strerror(errno));
+                present_failed = 1;
+                break;
+            }
+        } while (!ra.status.swap_busy);
+
+        // Phase 2: wait for swap_busy to deassert
+        while (!present_failed) {
+            memset(&ra, 0, sizeof(ra));
+            if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0) {
+                fprintf(stderr, "status poll (deassert) failed: %s\n",
+                        strerror(errno));
+                present_failed = 1;
+                break;
+            }
+            if (!ra.status.swap_busy) break;
+            usleep(100);
+        }
+
+        if (present_failed) { running = 0; break; }
+
         // print status every 60 frames
         frame++;
         if (frame % 60 == 0) {
@@ -390,10 +437,6 @@ int main(int argc, char *argv[])
                    rot_x, rot_y, cam_dist);
             fflush(stdout);
         }
-
-        // 16 ms pacing delay (~60 FPS cap); hardware renders the medium
-        // sphere in ~1.6 ms so this is purely a throttle
-        usleep(16000);
     }
 
     printf("\nDone. %ld frames rendered.\n", frame);

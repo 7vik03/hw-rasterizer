@@ -23,6 +23,7 @@ typedef struct {
     __u32 fifo_level;   // bits [5:0] of STATUS
     __u32 fifo_empty;   // bit  [6]   of STATUS
     __u32 fifo_full;    // bit  [7]   of STATUS
+    __u32 swap_busy;    // bit  [8]   -- 1 while a PRESENT is in flight
 } rasterizer_status_t;
 
 //no tneeded rigth now
@@ -42,19 +43,22 @@ typedef union {
 // Offset 0x44         : COMMIT register   (write-only, any value)
 // Offset 0x48         : STATUS register   (read-only)
 // Offset 0x4C         : CONTROL register  (read-write)
+// Offset 0x50         : PRESENT register  (write-only, any value)
 #define RAST_PACKET_WORD_BASE   0x00
 #define RAST_PACKET_NUM_WORDS   17
 #define RAST_COMMIT_OFFSET      0x44
 #define RAST_STATUS_OFFSET      0x48
 #define RAST_CONTROL_OFFSET     0x4C
-#define RAST_CTRL_PRESENT_BIT (1<<0)
-// bit masks for the STATUS and CONTROL registers
-#define RAST_STATUS_LEVEL_MASK  0x3F    // bits [5:0] = fifo level
-#define RAST_STATUS_EMPTY_BIT   (1<<6)  // bit  [6]   = fifo empty
-#define RAST_STATUS_FULL_BIT    (1<<7)  // bit  [7]   = fifo full
+#define RAST_PRESENT_OFFSET     0x50
 
-// CONTROL register bit fields
-#define RAST_CTRL_IRQ_EN_BIT    (1<<0)  // bit [0] = irq enable
+// bit masks for the STATUS register
+#define RAST_STATUS_LEVEL_MASK      0x3F    // bits [5:0] = fifo level
+#define RAST_STATUS_EMPTY_BIT       (1<<6)  // bit  [6]   = fifo empty
+#define RAST_STATUS_FULL_BIT        (1<<7)  // bit  [7]   = fifo full
+#define RAST_STATUS_SWAP_BUSY_BIT   (1<<8)  // bit  [8]   = swap/clear in progress
+
+// CONTROL register bit fields (PRESENT is at its own offset, not here)
+#define RAST_CTRL_IRQ_EN_BIT    (1<<0)  // bit [0]   = irq enable
 #define RAST_CTRL_WMARK_SHIFT   1       // bits [7:1] = watermark
 #define RAST_CTRL_WMARK_MASK    0x7F
 

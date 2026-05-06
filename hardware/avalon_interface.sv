@@ -16,8 +16,9 @@
 // Address map (word addresses, avalon_address[6:0]):
 //   0x00 - 0x10  packet words 0..16     (W)
 //   0x11         COMMIT                 (W, any data)
-//   0x12         STATUS                 (R) {full, empty, level[5:0]}
+//   0x12         STATUS                 (R) {swap_busy, full, empty, level[5:0]}
 //   0x13         CONTROL                (R/W) reserved for future IRQ work
+//   0x14         PRESENT                (W, any data) -- self-clearing pulse
 //
 // The C-side memory layout (rasterizer_packet_t in avalon_kernel.h) defines
 // what each staging word means:
@@ -57,7 +58,14 @@ module avalon_interface (
     output logic            fifo_full,
     output logic            fifo_empty,
     output logic [5:0]      fifo_level,
-    output logic present_req
+
+    // -------- frame-present handshake --------
+    // 1-cycle pulse when software writes PRESENT (any data to ADDR_PRESENT).
+    output logic            present_req,
+    // High while a present is still in flight (latched from rasterizer_top).
+    // Reflected in the STATUS register as bit [8] so userspace can poll it
+    // before submitting the next frame.
+    input  logic            swap_busy
 );
 
     // -----------------------------------------------------------------
@@ -68,6 +76,7 @@ module avalon_interface (
     localparam logic [6:0] ADDR_COMMIT    = 7'h11;
     localparam logic [6:0] ADDR_STATUS    = 7'h12;
     localparam logic [6:0] ADDR_CONTROL   = 7'h13;
+    localparam logic [6:0] ADDR_PRESENT   = 7'h14;
 
     // -----------------------------------------------------------------
     // Staging registers: 17 x 32-bit, indexed by avalon_address[4:0]
@@ -157,9 +166,17 @@ module avalon_interface (
                 if (!fifo_full) fifo_push <= 1'b1;
             end
             else if (avalon_address == ADDR_CONTROL) begin
+                // CONTROL is purely irq_enable + low_watermark. PRESENT
+                // used to share this register on bit 8, which clobbered
+                // the persistent fields on every present write; it now
+                // has its own ADDR_PRESENT (below) with no register.
                 control_reg <= avalon_writedata;
-                if (avalon_writedata[0])
-                    present_req<=1'b1;
+            end
+            else if (avalon_address == ADDR_PRESENT) begin
+                // Self-clearing command pulse: any write fires
+                // present_req for one cycle. No backing register, so
+                // CONTROL state is preserved across presents.
+                present_req <= 1'b1;
             end
         end
     end
@@ -171,10 +188,11 @@ module avalon_interface (
         avalon_readdata = 32'd0;
         case (avalon_address)
             ADDR_STATUS: begin
-                avalon_readdata = {24'd0,
-                                   fifo_full,
-                                   fifo_empty,
-                                   fifo_level};
+                avalon_readdata = {23'd0,
+                                   swap_busy,    // bit [8]
+                                   fifo_full,    // bit [7]
+                                   fifo_empty,   // bit [6]
+                                   fifo_level};  // bits [5:0]
             end
             ADDR_CONTROL: begin
                 avalon_readdata = control_reg;

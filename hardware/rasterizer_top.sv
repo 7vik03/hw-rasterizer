@@ -68,6 +68,15 @@ module rasterizer_top (
     logic present_req;
     logic present_pending;
 
+    // Software-visible "rasterizer is mid-frame-handoff" flag, exposed
+    // on STATUS bit [8]. Stays high from the moment a PRESENT is issued
+    // until the swap+clear is fully done. Userspace polls this before
+    // submitting the next frame's triangles so render_frame() of frame
+    // N+1 can never refill the FIFO during the SW_IDLE -> SW_ARM gate
+    // (which would lose the fifo_empty edge and stall the swap).
+    // Driven combinationally further down once sw_state is declared.
+    logic swap_busy;
+
     // Internal avalon_interface keeps its private `avalon_*` port names;
     // the top-level avs_* signals just feed straight into them.
     avalon_interface u_avalon (
@@ -84,7 +93,8 @@ module rasterizer_top (
         .fifo_full        (fifo_full),
         .fifo_empty       (fifo_empty),
         .fifo_level       (fifo_level),
-        .present_req      (present_req)
+        .present_req      (present_req),
+        .swap_busy        (swap_busy)
     );
 
     logic [N_PU-1:0]  pu_valid_seed;
@@ -256,7 +266,20 @@ module rasterizer_top (
     logic [12:0] clear_cnt;
     logic        frame_done;
 
-    assign block_dispatch = (sw_state != SW_IDLE) || present_pending;
+    // Block the dispatcher only while we're actively swapping/clearing.
+    // We must NOT also block on present_pending: SW_IDLE -> SW_ARM
+    // requires fifo_empty, and the FIFO can only drain by the dispatcher
+    // popping it. Blocking the dispatcher while present_pending is high
+    // would deadlock if any triangle was still in the FIFO when software
+    // issued RASTERIZER_PRESENT.
+    assign block_dispatch = (sw_state != SW_IDLE);
+
+    // swap_busy is the software-visible mirror: stays high from the
+    // moment a PRESENT lands until SW_CLEARING finishes. Note this is
+    // a SUPERSET of block_dispatch -- it also covers the window where
+    // we're still waiting for the FIFO to drain (sw_state==SW_IDLE,
+    // present_pending=1).
+    assign swap_busy = (sw_state != SW_IDLE) || present_pending;
 
     always_ff @(posedge clk) begin
         z_clear_start <= 1'b0;

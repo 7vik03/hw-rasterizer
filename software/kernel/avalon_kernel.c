@@ -40,10 +40,14 @@ static void writeTrianglePacket(const triangle_packet_t *pkt)
 
 static void present_frame(void)
 {
-    iowrite32(RAST_CTRL_PRESENT_BIT, dev.virtbase + RAST_CONTROL_OFFSET);
+    // PRESENT lives at its own offset (RAST_PRESENT_OFFSET) and is a
+    // self-clearing pulse in hardware -- any nonzero write fires it.
+    // Using a separate offset (instead of a bit in CONTROL) keeps the
+    // CONTROL shadow intact across present requests.
+    iowrite32(1, dev.virtbase + RAST_PRESENT_OFFSET);
 }
 
-//read the status register and save the 
+//read the status register and save the
 static void read_status(rasterizer_status_t *status)
 {
     __u32 raw = ioread32(dev.virtbase + RAST_STATUS_OFFSET);
@@ -51,6 +55,7 @@ static void read_status(rasterizer_status_t *status)
     status->fifo_level = raw & RAST_STATUS_LEVEL_MASK;
     status->fifo_empty = (raw & RAST_STATUS_EMPTY_BIT) ? 1 : 0;
     status->fifo_full  = (raw & RAST_STATUS_FULL_BIT) ? 1 : 0;
+    status->swap_busy  = (raw & RAST_STATUS_SWAP_BUSY_BIT) ? 1 : 0;
 }
 
 //write to the control register and update the shadow control register in the rasterizer_dev struct
