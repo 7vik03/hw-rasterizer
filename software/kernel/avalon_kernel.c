@@ -38,6 +38,11 @@ static void writeTrianglePacket(const triangle_packet_t *pkt)
     iowrite32(1, dev.virtbase + RAST_COMMIT_OFFSET);
 }
 
+static void present_frame(void)
+{
+    iowrite32(RAST_CTRL_PRESENT_BIT, dev.virtbase + RAST_CONTROL_OFFSET);
+}
+
 //read the status register and save the 
 static void read_status(rasterizer_status_t *status)
 {
@@ -107,7 +112,11 @@ static long rasterizer_ioctl(struct file *f, unsigned int cmd,
                          sizeof(rasterizer_arg_t)))
             return -EACCES;
         break;
-
+		
+    case RASTERIZER_PRESENT:
+    present_frame();
+    break;
+		
     default:
         return -EINVAL;
     }
