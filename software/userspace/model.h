@@ -56,14 +56,14 @@ void model_make_torus(model_t *m, int major_seg, int minor_seg,
  */
 void model_make_teapot(model_t *m);
 
-/* Brilliant-cut diamond gem -- ~80 faces */
-void model_make_diamond(model_t *m);
+/* Saturn: icosphere body + tilted torus ring -- ~368 faces */
+void model_make_saturn(model_t *m);
 
 /* Lego 2x4 brick with 8 cylindrical studs -- ~204 faces */
 void model_make_lego(model_t *m);
 
-/* Extruded 5-pointed star -- ~56 faces */
-void model_make_star(model_t *m);
+/* DNA double helix: two helical tubes + rungs -- ~300 faces */
+void model_make_dna(model_t *m);
 
 /* Rocket: nose cone + body + 4 fins -- ~148 faces */
 void model_make_rocket(model_t *m);

@@ -273,7 +273,7 @@ int model_load_obj(model_t *m, const char *filename)
 // Control point indices reference the 306 canonical teapot vertices.
 // The vertex table and patch index table are the standard Newell data.
 
-#define TEAPOT_DIV 4   // subdivision steps per patch edge
+#define TEAPOT_DIV 3   // subdivision steps per patch edge; 32*3*3*2=576 faces
 
 // 306 control point positions (x,y,z), Newell's original coordinates.
 // Y is up; teapot sits near y=0 and extends to y~3.15.
@@ -370,41 +370,41 @@ static const float teapot_cp[306][3] = {
     {-1.425f,0.0f,0.0f},{-0.798f,0.0f,-1.425f},{0.0f,0.0f,-1.425f}
 };
 
-// 32 patches, each referencing 16 control point indices (1-based in Newell).
-// Converted here to 0-based.
+// 32 patches, each referencing 16 control point indices (1-based, Newell canonical).
+// Source: https://github.com/rm-hull/newell-teapot/blob/master/teapot
 static const int teapot_patches[32][16] = {
     {  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16},
-    {  4,  3, 17, 18,  8,  7, 19, 20, 12, 11, 21, 22, 16, 15, 23, 24},
-    { 18, 17,  3,  4, 20, 19,  7,  8, 22, 21, 11, 12, 24, 23, 15, 16},
-    {  4,  3,  2,  1,  8,  7,  6,  5, 12, 11, 10,  9, 16, 15, 14, 13},
-    { 13, 14, 15, 16, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36},
-    { 16, 15, 37, 38, 28, 27, 39, 40, 32, 31, 41, 42, 36, 35, 43, 44},
-    { 38, 37, 15, 16, 40, 39, 27, 28, 42, 41, 31, 32, 44, 43, 35, 36},
-    { 16, 15, 14, 13, 36, 35, 34, 33, 32, 31, 30, 29, 36, 35, 34, 33},
-    { 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64},
-    { 52, 51, 65, 66, 56, 55, 67, 68, 60, 59, 69, 70, 64, 63, 71, 72},
-    { 66, 65, 51, 52, 68, 67, 55, 56, 70, 69, 59, 60, 72, 71, 63, 64},
-    { 64, 63, 62, 61, 64, 63, 62, 61, 64, 63, 62, 61, 64, 63, 62, 61},
-    { 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88},
-    { 76, 75, 89, 90, 80, 79, 91, 92, 84, 83, 93, 94, 88, 87, 95, 96},
-    { 90, 89, 75, 76, 92, 91, 79, 80, 94, 93, 83, 84, 96, 95, 87, 88},
-    { 88, 87, 86, 85, 92, 91, 90, 89, 96, 95, 94, 93, 88, 87, 86, 85},
-    { 97, 98, 99,100,101,102,103,104,105,106,107,108,109,110,111,112},
-    {100, 99,113,114,104,103,115,116,108,107,117,118,112,111,119,120},
-    {114,113, 99,100,116,115,103,104,118,117,107,108,120,119,111,112},
-    {112,111,110,109,112,111,110,109,112,111,110,109,112,111,110,109},
+    {  4, 17, 18, 19,  8, 20, 21, 22, 12, 23, 24, 25, 16, 26, 27, 28},
+    { 19, 29, 30, 31, 22, 32, 33, 34, 25, 35, 36, 37, 28, 38, 39, 40},
+    { 31, 41, 42,  1, 34, 43, 44,  5, 37, 45, 46,  9, 40, 47, 48, 13},
+    { 13, 14, 15, 16, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60},
+    { 16, 26, 27, 28, 52, 61, 62, 63, 56, 64, 65, 66, 60, 67, 68, 69},
+    { 28, 38, 39, 40, 63, 70, 71, 72, 66, 73, 74, 75, 69, 76, 77, 78},
+    { 40, 47, 48, 13, 72, 79, 80, 49, 75, 81, 82, 53, 78, 83, 84, 57},
+    { 57, 58, 59, 60, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96},
+    { 60, 67, 68, 69, 88, 97, 98, 99, 92,100,101,102, 96,103,104,105},
+    { 69, 76, 77, 78, 99,106,107,108,102,109,110,111,105,112,113,114},
+    { 78, 83, 84, 57,108,115,116, 85,111,117,118, 89,114,119,120, 93},
     {121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136},
-    {124,123,137,138,128,127,139,140,132,131,141,142,136,135,143,144},
-    {138,137,123,124,140,139,127,128,142,141,131,132,144,143,135,136},
-    {136,135,134,133,136,135,134,133,136,135,134,133,136,135,134,133},
-    {145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160},
-    {148,147,161,162,152,151,163,164,156,155,165,166,160,159,167,168},
-    {162,161,147,148,164,163,151,152,166,165,155,156,168,167,159,160},
-    {160,159,158,157,160,159,158,157,160,159,158,157,160,159,158,157},
-    {169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184},
-    {172,171,185,186,176,175,187,188,180,179,189,190,184,183,191,192},
-    {186,185,171,172,188,187,175,176,190,189,179,180,192,191,183,184},
-    {184,183,182,181,184,183,182,181,184,183,182,181,184,183,182,181}
+    {124,137,138,121,128,139,140,125,132,141,142,129,136,143,144,133},
+    {133,134,135,136,145,146,147,148,149,150,151,152, 69,153,154,155},
+    {136,143,144,133,148,156,157,145,152,158,159,149,155,160,161, 69},
+    {162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177},
+    {165,178,179,162,169,180,181,166,173,182,183,170,177,184,185,174},
+    {174,175,176,177,186,187,188,189,190,191,192,193,194,195,196,197},
+    {177,184,185,174,189,198,199,186,193,200,201,190,197,202,203,194},
+    {204,204,204,204,207,208,209,210,211,211,211,211,212,213,214,215},
+    {204,204,204,204,210,217,218,219,211,211,211,211,215,220,221,222},
+    {204,204,204,204,219,224,225,226,211,211,211,211,222,227,228,229},
+    {204,204,204,204,226,230,231,207,211,211,211,211,229,232,233,212},
+    {212,213,214,215,234,235,236,237,238,239,240,241,242,243,244,245},
+    {215,220,221,222,237,246,247,248,241,249,250,251,245,252,253,254},
+    {222,227,228,229,248,255,256,257,251,258,259,260,254,261,262,263},
+    {229,232,233,212,257,264,265,234,260,266,267,238,263,268,269,242},
+    {270,270,270,270,279,280,281,282,275,276,277,278,271,272,273,274},
+    {270,270,270,270,282,289,290,291,278,286,287,288,274,283,284,285},
+    {270,270,270,270,291,298,299,300,288,295,296,297,285,292,293,294},
+    {270,270,270,270,300,305,306,279,297,303,304,275,294,301,302,271},
 };
 
 // evaluate a cubic Bezier curve at parameter t
@@ -485,80 +485,64 @@ void model_make_teapot(model_t *m)
 done:;
 }
 
-// ---- diamond gem ----
+// ---- Saturn ----
 //
-// Classic brilliant-cut diamond: flat table on top, crown of trapezoidal
-// facets, a sharp culet at the bottom.  N segments around the girdle.
-// At N=16: 16 crown + 16 upper-girdle + 16 lower-girdle + 16 pavilion
-//          + 1 table fan (16 tris) = 80 faces total.
+// Sphere body (icosphere subdiv=1, 80 faces) plus a flat torus ring
+// tilted ~27 degrees.  Ring: 24 major x 6 minor = 288 faces.
+// Total ~368 faces.
 
-void model_make_diamond(model_t *m)
+void model_make_saturn(model_t *m)
 {
-    memset(m, 0, sizeof(*m));
-    strncpy(m->name, "diamond", sizeof(m->name) - 1);
+    // ---- body: unit icosphere scaled down, reuse model_make_icosphere ----
+    model_make_icosphere(m, 1);   // 80 faces, unit sphere
+    strncpy(m->name, "saturn", sizeof(m->name) - 1);
 
-    int   N        = 16;
-    float table_r  = 0.45f;   // radius of flat top face
-    float girdle_r = 1.0f;    // widest point
-    float table_y  =  0.55f;  // y of table
-    float girdle_y =  0.0f;   // y of girdle
-    float culet_y  = -1.0f;   // y of bottom point
-    float crown_y  =  0.75f;  // not used separately; table_y is crown top
+    // scale all body verts to radius 0.55
+    for (int i = 0; i < m->num_verts; i++) {
+        m->verts[i].x *= 0.55f;
+        m->verts[i].y *= 0.55f;
+        m->verts[i].z *= 0.55f;
+    }
+    int body_vert_count = m->num_verts;
 
-    // vertices:
-    //   0          : table centre (top cap)
-    //   1..N       : table ring (inner top)
-    //   N+1..2N    : girdle ring
-    //   2N+1       : culet (bottom point)
+    // ---- ring: flat torus tilted 27 degrees around Z ----
+    int   major_seg = 24, minor_seg = 5;
+    float R = 1.1f, r = 0.15f;
+    float tilt = 27.0f * (float)M_PI / 180.0f;
+    float ct = cosf(tilt), st = sinf(tilt);
 
-    // table centre
-    m->verts[m->num_verts++] = (vec3_t){ 0.0f, table_y + 0.05f, 0.0f };
-
-    // table ring
-    int table_base = m->num_verts;
-    for (int i = 0; i < N; i++) {
-        float a = 2.0f * (float)M_PI * i / N;
-        m->verts[m->num_verts++] = (vec3_t){
-            table_r * cosf(a), table_y, table_r * sinf(a)
-        };
+    for (int i = 0; i < major_seg; i++) {
+        float theta = 2.0f * (float)M_PI * i / major_seg;
+        for (int j = 0; j < minor_seg; j++) {
+            float phi = 2.0f * (float)M_PI * j / minor_seg;
+            if (m->num_verts >= MODEL_MAX_VERTS) goto ring_done;
+            float rx = (R + r * cosf(phi)) * cosf(theta);
+            float ry = r * sinf(phi);
+            float rz = (R + r * cosf(phi)) * sinf(theta);
+            // tilt around Z axis
+            m->verts[m->num_verts++] = (vec3_t){
+                rx,
+                ry * ct - rz * st,
+                ry * st + rz * ct
+            };
+        }
     }
 
-    // girdle ring
-    int girdle_base = m->num_verts;
-    for (int i = 0; i < N; i++) {
-        float a = 2.0f * (float)M_PI * i / N;
-        m->verts[m->num_verts++] = (vec3_t){
-            girdle_r * cosf(a), girdle_y, girdle_r * sinf(a)
-        };
+    int ring_base = body_vert_count;
+    for (int i = 0; i < major_seg; i++) {
+        int ni = (i + 1) % major_seg;
+        for (int j = 0; j < minor_seg; j++) {
+            int nj = (j + 1) % minor_seg;
+            int a = ring_base + i  * minor_seg + j;
+            int b = ring_base + ni * minor_seg + j;
+            int c = ring_base + ni * minor_seg + nj;
+            int d = ring_base + i  * minor_seg + nj;
+            if (m->num_faces + 1 >= MODEL_MAX_FACES) goto ring_done;
+            m->faces[m->num_faces++] = (face_t){{ a, b, c }};
+            m->faces[m->num_faces++] = (face_t){{ a, c, d }};
+        }
     }
-
-    // culet
-    int culet_idx = m->num_verts;
-    m->verts[m->num_verts++] = (vec3_t){ 0.0f, culet_y, 0.0f };
-
-    // table fan (flat top)
-    for (int i = 0; i < N; i++) {
-        int a = table_base + i;
-        int b = table_base + (i + 1) % N;
-        m->faces[m->num_faces++] = (face_t){{ 0, b, a }};
-    }
-
-    // crown: table ring -> girdle ring
-    for (int i = 0; i < N; i++) {
-        int t0 = table_base  + i;
-        int t1 = table_base  + (i + 1) % N;
-        int g0 = girdle_base + i;
-        int g1 = girdle_base + (i + 1) % N;
-        m->faces[m->num_faces++] = (face_t){{ t0, g0, t1 }};
-        m->faces[m->num_faces++] = (face_t){{ t1, g0, g1 }};
-    }
-
-    // pavilion: girdle ring -> culet
-    for (int i = 0; i < N; i++) {
-        int g0 = girdle_base + i;
-        int g1 = girdle_base + (i + 1) % N;
-        m->faces[m->num_faces++] = (face_t){{ g0, culet_idx, g1 }};
-    }
+ring_done:;
 }
 
 // ---- Lego brick (2x4 stud) ----
@@ -657,56 +641,114 @@ void model_make_lego(model_t *m)
             add_cylinder(m, xs[xi], stud_y0, stud_y1, zs[zi], stud_r, seg);
 }
 
-// ---- extruded star ----
+// ---- DNA double helix ----
 //
-// 5-pointed star profile extruded along Y.  Each arm of the star has
-// an outer tip and an inner notch; profile has 10 vertices.
-// Front face fan + back face fan + side quads = 8+8+20*2 = 56 faces.
+// Two helical tubes (strands A and B, offset 180 degrees) connected by
+// flat rungs every ~half turn.  Each tube is a series of cylinder
+// segments following a helical path; rungs are flat quads.
+// STEPS=30 steps, tube_seg=5: 2*(30*5*4) sides + 30*2 rung tris = ~1260 faces.
+// Clamped by MODEL_MAX_FACES.
 
-void model_make_star(model_t *m)
+void model_make_dna(model_t *m)
 {
     memset(m, 0, sizeof(*m));
-    strncpy(m->name, "star", sizeof(m->name) - 1);
+    strncpy(m->name, "dna", sizeof(m->name) - 1);
 
-    int   N        = 5;
-    float r_outer  = 1.0f;
-    float r_inner  = 0.42f;
-    float half_h   = 0.25f;   // half-thickness of extrusion
+    int   steps    = 24;        // steps along the helix axis
+    int   tube_seg = 4;         // polygon sides for each tube cross-section
+    float helix_r  = 0.55f;    // radius of helix from centre axis
+    float tube_r   = 0.10f;    // radius of the tube itself
+    float pitch    = 2.0f;     // full height of one complete turn
+    float total_h  = 2.0f;     // total height of the helix
+    float y_bot    = -total_h * 0.5f;
 
-    // 10 profile points (alternating outer tip / inner notch)
-    // front ring (y = +half_h), back ring (y = -half_h)
-    int front_base = 0;
-    for (int i = 0; i < 2*N; i++) {
-        float a = (float)M_PI / N * i - (float)M_PI / 2.0f;
-        float r = (i % 2 == 0) ? r_outer : r_inner;
-        m->verts[m->num_verts++] = (vec3_t){ r*cosf(a),  half_h, r*sinf(a) };
-    }
-    int back_base = m->num_verts;
-    for (int i = 0; i < 2*N; i++) {
-        float a = (float)M_PI / N * i - (float)M_PI / 2.0f;
-        float r = (i % 2 == 0) ? r_outer : r_inner;
-        m->verts[m->num_verts++] = (vec3_t){ r*cosf(a), -half_h, r*sinf(a) };
-    }
-    // front centre, back centre
-    int fc = m->num_verts;
-    m->verts[m->num_verts++] = (vec3_t){ 0.0f,  half_h, 0.0f };
-    int bc = m->num_verts;
-    m->verts[m->num_verts++] = (vec3_t){ 0.0f, -half_h, 0.0f };
+    // build each strand as a series of tube rings along the helix
+    // strand 0: phase 0, strand 1: phase pi
+    for (int strand = 0; strand < 2; strand++) {
+        float phase = strand * (float)M_PI;
+        int prev_ring = -1;
 
-    // front and back fans
-    for (int i = 0; i < 2*N; i++) {
-        int ni = (i + 1) % (2*N);
-        m->faces[m->num_faces++] = (face_t){{ fc, front_base+i, front_base+ni }};
-        m->faces[m->num_faces++] = (face_t){{ bc, back_base+ni, back_base+i  }};
+        for (int s = 0; s <= steps; s++) {
+            float t     = (float)s / steps;
+            float y     = y_bot + t * total_h;
+            float angle = 2.0f * (float)M_PI * t * (total_h / pitch) + phase;
+
+            float cx = helix_r * cosf(angle);
+            float cz = helix_r * sinf(angle);
+
+            // tangent direction (for tube orientation)
+            float da    = 2.0f * (float)M_PI * (total_h / pitch) / steps;
+            float tx    = -helix_r * sinf(angle) * da;
+            float ty    = total_h / steps;
+            float tz    =  helix_r * cosf(angle) * da;
+            float tlen  = sqrtf(tx*tx + ty*ty + tz*tz);
+            if (tlen > 1e-6f) { tx/=tlen; ty/=tlen; tz/=tlen; }
+
+            // two vectors perpendicular to tangent for the tube cross-section
+            // use world-up crossed with tangent to get radial basis
+            float ux, uy, uz; // up x tangent
+            ux = ty*0.0f - tz*1.0f;   // (0,1,0) x (tx,ty,tz)... simplified:
+            uy = tz*0.0f - tx*0.0f;
+            uz = tx*1.0f - ty*0.0f;
+            // actually: (0,1,0) x (tx,ty,tz) = (1*tz-0*ty, 0*tx-0*tz, 0*ty-1*tx)
+            //                                 = (tz, 0, -tx)
+            ux = tz; uy = 0.0f; uz = -tx;
+            float ulen = sqrtf(ux*ux + uy*uy + uz*uz);
+            if (ulen < 1e-6f) { ux = 1.0f; uy = 0.0f; uz = 0.0f; ulen = 1.0f; }
+            ux/=ulen; uy/=ulen; uz/=ulen;
+            // vx,vy,vz = tangent x u
+            float vx = ty*uz - tz*uy;
+            float vy = tz*ux - tx*uz;
+            float vz = tx*uy - ty*ux;
+
+            int cur_ring = m->num_verts;
+            if (cur_ring + tube_seg > MODEL_MAX_VERTS) goto dna_done;
+
+            for (int k = 0; k < tube_seg; k++) {
+                float a = 2.0f * (float)M_PI * k / tube_seg;
+                float ca = cosf(a), sa = sinf(a);
+                m->verts[m->num_verts++] = (vec3_t){
+                    cx + tube_r*(ca*ux + sa*vx),
+                    y  + tube_r*(ca*uy + sa*vy),
+                    cz + tube_r*(ca*uz + sa*vz)
+                };
+            }
+
+            if (prev_ring >= 0) {
+                for (int k = 0; k < tube_seg; k++) {
+                    int nk = (k + 1) % tube_seg;
+                    if (m->num_faces + 2 > MODEL_MAX_FACES) goto dna_done;
+                    m->faces[m->num_faces++] = (face_t){{
+                        prev_ring+k, cur_ring+k, cur_ring+nk }};
+                    m->faces[m->num_faces++] = (face_t){{
+                        prev_ring+k, cur_ring+nk, prev_ring+nk }};
+                }
+            }
+            prev_ring = cur_ring;
+        }
     }
-    // side quads (each edge of the profile)
-    for (int i = 0; i < 2*N; i++) {
-        int ni = (i + 1) % (2*N);
-        int f0 = front_base + i,  f1 = front_base + ni;
-        int b0 = back_base  + i,  b1 = back_base  + ni;
-        m->faces[m->num_faces++] = (face_t){{ f0, b0, f1 }};
-        m->faces[m->num_faces++] = (face_t){{ f1, b0, b1 }};
+
+    // ---- rungs connecting the two strands ----
+    // one rung every 2 steps (every ~30 degrees)
+    int rung_every = 2;
+    // strand 0 rings start at vert 0, each ring has tube_seg verts
+    // strand 1 rings start at vert (steps+1)*tube_seg
+    int s0_base = 0;
+    int s1_base = (steps + 1) * tube_seg;
+
+    for (int s = 0; s <= steps; s += rung_every) {
+        // centre of strand 0 ring s
+        int r0 = s0_base + s * tube_seg;
+        int r1 = s1_base + s * tube_seg;
+        if (r0 + tube_seg > m->num_verts) break;
+        if (r1 + tube_seg > m->num_verts) break;
+        if (m->num_faces + 2 > MODEL_MAX_FACES) break;
+        // connect first vertex of each ring with a flat quad
+        m->faces[m->num_faces++] = (face_t){{ r0, r1, r1+1 }};
+        m->faces[m->num_faces++] = (face_t){{ r0, r1+1, r0+1 }};
     }
+
+dna_done:;
 }
 
 // ---- rocket ----

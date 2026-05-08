@@ -280,10 +280,10 @@ int main(int argc, char *argv[])
     model_make_icosphere(&models[1], 1);         // 80 faces
     model_make_icosphere(&models[2], 2);         // 320 faces
     model_make_torus(&models[3], 12, 8, 0.7f, 0.3f);
-    model_make_teapot(&models[4]);               // Utah teapot ~1024 faces
-    model_make_diamond(&models[5]);              // gem ~80 faces
+    model_make_teapot(&models[4]);               // Utah teapot ~576 faces
+    model_make_saturn(&models[5]);               // Saturn + rings ~368 faces
     model_make_lego(&models[6]);                 // Lego 2x4 brick ~204 faces
-    model_make_star(&models[7]);                 // extruded star ~56 faces
+    model_make_dna(&models[7]);                  // DNA double helix ~300 faces
     model_make_rocket(&models[8]);               // rocket ~148 faces
     model_make_minifigure(&models[9]);           // Lego minifigure ~170 faces
 
@@ -326,9 +326,9 @@ int main(int argc, char *argv[])
     printf("  3       - sphere med\n");
     printf("  4       - torus\n");
     printf("  5       - teapot\n");
-    printf("  6       - diamond\n");
+    printf("  6       - saturn\n");
     printf("  7       - lego brick\n");
-    printf("  8       - star\n");
+    printf("  8       - dna helix\n");
     printf("  9       - rocket\n");
     printf("  0       - minifigure\n");
     if (num_models > 10) printf("  (OBJ)   - %s\n", models[10].name);
