@@ -65,6 +65,9 @@ void model_make_lego(model_t *m);
 /* DNA double helix: two helical tubes + rungs -- ~300 faces */
 void model_make_dna(model_t *m);
 
+/* Utah teapot mesh baked from 552.obj -- 552 faces */
+void model_make_teapot_552(model_t *m);
+
 /* Rocket: nose cone + body + 4 fins -- ~148 faces */
 void model_make_rocket(model_t *m);
 

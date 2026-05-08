@@ -268,23 +268,6 @@ static int render_frame(int fd, const model_t *model,
     return submitted;
 }
 
-// Try loading the first OBJ path that exists and parses.
-// Returns 0 on success and stores the winning path in *loaded_path.
-static int load_first_available_obj(model_t *out,
-                                    const char *const *candidates,
-                                    int num_candidates,
-                                    const char **loaded_path)
-{
-    for (int i = 0; i < num_candidates; i++) {
-        if (model_load_obj(out, candidates[i]) == 0) {
-            if (loaded_path) *loaded_path = candidates[i];
-            return 0;
-        }
-    }
-    if (loaded_path) *loaded_path = NULL;
-    return -1;
-}
-
 // ---- main ----
 
 int main(int argc, char *argv[])
@@ -302,36 +285,7 @@ int main(int argc, char *argv[])
     model_make_saturn(&models[5]);               // Saturn + rings ~368 faces
     model_make_lego(&models[6]);                 // Lego 2x4 brick ~204 faces
     model_make_dna(&models[7]);                  // DNA double helix ~300 faces
-
-    // Replace rocket slot with a Utah OBJ teapot variant.
-    // Prefer the 552-face mesh as a good complexity/throughput balance,
-    // then fall back to lower/higher resolutions.
-    const char *utah_teapot_candidates[] = {
-        "552.obj", "./552.obj", "../552.obj",
-        "240.obj", "./240.obj", "../240.obj",
-        "800.obj", "./800.obj", "../800.obj"
-    };
-    const char *utah_teapot_path = NULL;
-    if (load_first_available_obj(&models[8], utah_teapot_candidates,
-                                 (int)(sizeof(utah_teapot_candidates) /
-                                       sizeof(utah_teapot_candidates[0])),
-                                 &utah_teapot_path) == 0) {
-        if (strstr(utah_teapot_path, "552")) {
-            strncpy(models[8].name, "teapot_552", sizeof(models[8].name) - 1);
-        } else if (strstr(utah_teapot_path, "240")) {
-            strncpy(models[8].name, "teapot_240", sizeof(models[8].name) - 1);
-        } else if (strstr(utah_teapot_path, "800")) {
-            strncpy(models[8].name, "teapot_800", sizeof(models[8].name) - 1);
-        }
-        models[8].name[sizeof(models[8].name) - 1] = '\0';
-        printf("Loaded built-in %s: %d verts, %d faces (%s)\n",
-               models[8].name, models[8].num_verts, models[8].num_faces,
-               utah_teapot_path);
-    } else {
-        model_make_rocket(&models[8]);           // fallback if OBJs missing
-        fprintf(stderr, "Warning: could not load Utah teapot OBJs "
-                        "(552/240/800). Falling back to rocket.\n");
-    }
+    model_make_teapot_552(&models[8]);           // Utah teapot OBJ-552
 
     model_make_minifigure(&models[9]);           // Lego minifigure ~170 faces
 
@@ -377,8 +331,7 @@ int main(int argc, char *argv[])
     printf("  6       - saturn\n");
     printf("  7       - lego brick\n");
     printf("  8       - dna helix\n");
-    if (utah_teapot_path) printf("  9       - %s\n", models[8].name);
-    else                  printf("  9       - rocket (fallback)\n");
+    printf("  9       - teapot_552\n");
     printf("  0       - minifigure\n");
     if (num_models > 10) printf("  (OBJ)   - %s\n", models[10].name);
     printf("  r       - reset rotation\n");
