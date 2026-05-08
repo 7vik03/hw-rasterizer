@@ -198,59 +198,51 @@ static int32_t to_fixed(float v)
 // Returns 0 on success, -1 if the triangle is back-facing, degenerate,
 // or entirely outside the screen.
 
-int setup_triangle(const screen_vertex_t *v0,
-                   const screen_vertex_t *v1,
-                   const screen_vertex_t *v2,
-                   uint8_t color,
+int setup_triangle(const screen_vertex_t *v0, const screen_vertex_t *v1,
+                   const screen_vertex_t *v2, uint8_t color,
                    triangle_packet_t *out)
 {
-    // ---- edge coefficients ----
-    // E_i(x,y) = a_i*x + b_i*y + c_i; inside iff all three >= 0
-
-    float a0f = v1->sy - v2->sy,  b0f = v2->sx - v1->sx;
+    float a0f = v1->sy - v2->sy, b0f = v2->sx - v1->sx;
     float c0f = v1->sx * v2->sy - v2->sx * v1->sy;
 
-    float a1f = v2->sy - v0->sy,  b1f = v0->sx - v2->sx;
+    float a1f = v2->sy - v0->sy, b1f = v0->sx - v2->sx;
     float c1f = v2->sx * v0->sy - v0->sx * v2->sy;
 
-    float a2f = v0->sy - v1->sy,  b2f = v1->sx - v0->sx;
+    float a2f = v0->sy - v1->sy, b2f = v1->sx - v0->sx;
     float c2f = v0->sx * v1->sy - v1->sx * v0->sy;
 
-    // signed area = E0 evaluated at v0; positive => CCW => front-facing
     float area = a0f * v0->sx + b0f * v0->sy + c0f;
-    if (area <= 0.0f) return -1;  // cull back-facing and degenerate
 
-    // ---- bounding box ----
+    // Reject only truly degenerate triangles.
+    if (fabsf(area) <= 1e-6f) return -1;
 
-    float xminf = v0->sx < v1->sx ? v0->sx : v1->sx;
-    if (v2->sx < xminf) xminf = v2->sx;
-    float yminf = v0->sy < v1->sy ? v0->sy : v1->sy;
-    if (v2->sy < yminf) yminf = v2->sy;
-    float xmaxf = v0->sx > v1->sx ? v0->sx : v1->sx;
-    if (v2->sx > xmaxf) xmaxf = v2->sx;
-    float ymaxf = v0->sy > v1->sy ? v0->sy : v1->sy;
-    if (v2->sy > ymaxf) ymaxf = v2->sy;
+    // Normalize winding so hardware can always use inside test e0/e1/e2 >= 0.
+    if (area < 0.0f) {
+        area = -area;
+
+        a0f = -a0f; b0f = -b0f; c0f = -c0f;
+        a1f = -a1f; b1f = -b1f; c1f = -c1f;
+        a2f = -a2f; b2f = -b2f; c2f = -c2f;
+    }
+
+    float xminf = fminf(fminf(v0->sx, v1->sx), v2->sx);
+    float yminf = fminf(fminf(v0->sy, v1->sy), v2->sy);
+    float xmaxf = fmaxf(fmaxf(v0->sx, v1->sx), v2->sx);
+    float ymaxf = fmaxf(fmaxf(v0->sy, v1->sy), v2->sy);
 
     int bbox_xmin = (int)floorf(xminf);
     int bbox_ymin = (int)floorf(yminf);
     int bbox_xmax = (int)ceilf(xmaxf);
     int bbox_ymax = (int)ceilf(ymaxf);
 
-    // clamp to framebuffer
-    if (bbox_xmin < 0)          bbox_xmin = 0;
-    if (bbox_ymin < 0)          bbox_ymin = 0;
-    if (bbox_xmax > SCREEN_W-1) bbox_xmax = SCREEN_W - 1;
-    if (bbox_ymax > SCREEN_H-1) bbox_ymax = SCREEN_H - 1;
+    if (bbox_xmin < 0) bbox_xmin = 0;
+    if (bbox_ymin < 0) bbox_ymin = 0;
+    if (bbox_xmax > SCREEN_W - 1) bbox_xmax = SCREEN_W - 1;
+    if (bbox_ymax > SCREEN_H - 1) bbox_ymax = SCREEN_H - 1;
 
     if (bbox_xmin > bbox_xmax || bbox_ymin > bbox_ymax) return -1;
 
-    // snap xmin down to multiple of 16 -- hardware invariant: each PU
-    // owns columns whose low nibble equals PU_ID, so col_base[3:0]
-    // must equal PU_ID for memory bank addressing to be correct
     bbox_xmin = bbox_xmin & ~15;
-
-    // ---- initial edge values at pixel centre of bbox origin ----
-    // hardware evaluates seeds at (bbox_xmin+0.5, bbox_ymin+0.5)
 
     float px = (float)bbox_xmin + 0.5f;
     float py = (float)bbox_ymin + 0.5f;
@@ -259,30 +251,23 @@ int setup_triangle(const screen_vertex_t *v0,
     float e1_initf = a1f * px + b1f * py + c1f;
     float e2_initf = a2f * px + b2f * py + c2f;
 
-    // ---- depth interpolation ----
-    // z_step_x = dZ/dx, z_step_y = dZ/dy computed by barycentric
-    // interpolation over the signed triangle area (Q12.12)
-
     float zs0 = v0->sz * (float)DEPTH_MAX;
     float zs1 = v1->sz * (float)DEPTH_MAX;
     float zs2 = v2->sz * (float)DEPTH_MAX;
 
-    float z_step_xf = 0.0f, z_step_yf = 0.0f, z_at_originf = 0.0f;
-    if (area > 1e-6f) {
-        z_step_xf    = (a0f*zs0 + a1f*zs1 + a2f*zs2) / area;
-        z_step_yf    = (b0f*zs0 + b1f*zs1 + b2f*zs2) / area;
-        z_at_originf = ((e0_initf/(float)FIXED_ONE)*zs0 +
-                        (e1_initf/(float)FIXED_ONE)*zs1 +
-                        (e2_initf/(float)FIXED_ONE)*zs2) / area;
-    }
+    float z_step_xf = (a0f * zs0 + a1f * zs1 + a2f * zs2) / area;
+    float z_step_yf = (b0f * zs0 + b1f * zs1 + b2f * zs2) / area;
 
-    // ---- pack kernel struct ----
+    // IMPORTANT: e*_initf are floats, not fixed-point. Do not divide by FIXED_ONE.
+    float z_at_originf = (e0_initf * zs0 +
+                          e1_initf * zs1 +
+                          e2_initf * zs2) / area;
 
     memset(out, 0, sizeof(*out));
 
     out->a0 = to_fixed(a0f);
     out->b0 = to_fixed(b0f);
-    out->c0 = to_fixed(e0_initf);  // HW ignores word[2]; send e0_init anyway
+    out->c0 = to_fixed(e0_initf);
 
     out->a1 = to_fixed(a1f);
     out->b1 = to_fixed(b1f);
@@ -300,15 +285,12 @@ int setup_triangle(const screen_vertex_t *v0,
     out->z_step_x = to_fixed(z_step_xf);
     out->z_step_y = to_fixed(z_step_yf);
 
-    // bbox_packed: bits [31:24]=ymax [23:16]=ymin [15:8]=xmax [7:0]=xmin
-    // hardware reads each field as 8 bits and zero-extends; x fits in
-    // 8 bits because the internal framebuffer is 256 wide (max 255)
-    out->bbox_packed = ((__u32)(bbox_ymax & 0xFF) << 24) |
-                       ((__u32)(bbox_ymin & 0xFF) << 16) |
-                       ((__u32)(bbox_xmax & 0xFF) <<  8) |
-                       ((__u32)(bbox_xmin & 0xFF));
+    out->bbox_packed =
+        ((__u32)(bbox_ymax & 0xFF) << 24) |
+        ((__u32)(bbox_ymin & 0xFF) << 16) |
+        ((__u32)(bbox_xmax & 0xFF) << 8)  |
+        ((__u32)(bbox_xmin & 0xFF));
 
-    // flags_color: bit[8]=front_facing, bits[7:0]=color (RGB332)
     out->flags_color = ((__u32)1 << 8) | ((__u32)color & 0xFF);
 
     return 0;
