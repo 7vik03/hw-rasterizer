@@ -58,8 +58,8 @@ module pixel_unit #(
     parameter bit  IS_LAST_PU     = 1'b0,
     parameter int  FB_DEPTH       = 4096,
     parameter int  Z_DEPTH        = 4096,
-    parameter int  Z_MSB          = 15,
-    parameter int  Z_LSB          = 0,
+    parameter int  Z_MSB          = 27,
+    parameter int  Z_LSB          = 12,
     // Run a full memory clear pass right after rst is deasserted.
     // Synthesis builds always set this to 1 so we never trust BRAM
     // power-up contents; unit testbenches set it to 0 to keep their
