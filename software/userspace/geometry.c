@@ -257,7 +257,6 @@ int setup_triangle(const screen_vertex_t *v0, const screen_vertex_t *v1,
 
     float z_step_xf = (a0f * zs0 + a1f * zs1 + a2f * zs2) / area;
     float z_step_yf = (b0f * zs0 + b1f * zs1 + b2f * zs2) / area;
-
     // IMPORTANT: e*_initf are floats, not fixed-point. Do not divide by FIXED_ONE.
     float z_at_originf = (e0_initf * zs0 +
                           e1_initf * zs1 +
