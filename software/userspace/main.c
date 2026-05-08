@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 #include <sys/ioctl.h>
 #include <libusb-1.0/libusb.h>
 
@@ -348,6 +349,10 @@ int main(int argc, char *argv[])
     int   auto_rotate = 0;
     int   running    = 1;
     long  frame      = 0;
+    float fps        = 0.0f;
+
+    struct timespec t_prev, t_now;
+    clock_gettime(CLOCK_MONOTONIC, &t_prev);
 
     while (running) {
         // poll_keys() does one USB interrupt transfer and rebuilds
@@ -447,16 +452,21 @@ int main(int argc, char *argv[])
 
         if (present_failed) { running = 0; break; }
 
-        // print status every 60 frames
+        // measure frame time and compute FPS
+        clock_gettime(CLOCK_MONOTONIC, &t_now);
+        float dt = (t_now.tv_sec  - t_prev.tv_sec) +
+                   (t_now.tv_nsec - t_prev.tv_nsec) * 1e-9f;
+        t_prev = t_now;
+        if (dt > 1e-6f) fps = 1.0f / dt;
+
+        // print status every frame (overwrite same line)
         frame++;
-        if (frame % 60 == 0) {
-            printf("\rFrame %ld | model=%s (%d tris) | "
-                   "rx=%.1f ry=%.1f dist=%.1f    ",
-                   frame, models[current_model].name,
-                   models[current_model].num_faces,
-                   rot_x, rot_y, cam_dist);
-            fflush(stdout);
-        }
+        printf("\rFrame %ld | %s (%d tris) | FPS: %5.1f | "
+               "rx=%.1f ry=%.1f dist=%.1f    ",
+               frame, models[current_model].name,
+               models[current_model].num_faces,
+               fps, rot_x, rot_y, cam_dist);
+        fflush(stdout);
     }
 
     printf("\nDone. %ld frames rendered.\n", frame);

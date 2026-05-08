@@ -471,14 +471,29 @@ void model_make_teapot(model_t *m)
                 q01.x *= scale; q01.y = q01.y * scale + oy; q01.z *= scale;
                 q11.x *= scale; q11.y = q11.y * scale + oy; q11.z *= scale;
 
+                // check winding: cross(q10-q00, q01-q00) should point outward
+                // (away from origin).  If not, swap to get CCW from outside.
+                float ex = q10.x - q00.x, ey = q10.y - q00.y, ez = q10.z - q00.z;
+                float fx = q01.x - q00.x, fy = q01.y - q00.y, fz = q01.z - q00.z;
+                float nx = ey*fz - ez*fy;
+                float ny = ez*fx - ex*fz;
+                float nz = ex*fy - ey*fx;
+                // dot with q00 position (outward check from origin)
+                int flip = (nx*q00.x + ny*q00.y + nz*q00.z) < 0.0f;
+
                 int base = m->num_verts;
                 m->verts[m->num_verts++] = q00;
                 m->verts[m->num_verts++] = q10;
                 m->verts[m->num_verts++] = q11;
                 m->verts[m->num_verts++] = q01;
 
-                m->faces[m->num_faces++] = (face_t){{ base+0, base+1, base+2 }};
-                m->faces[m->num_faces++] = (face_t){{ base+0, base+2, base+3 }};
+                if (!flip) {
+                    m->faces[m->num_faces++] = (face_t){{ base+0, base+1, base+2 }};
+                    m->faces[m->num_faces++] = (face_t){{ base+0, base+2, base+3 }};
+                } else {
+                    m->faces[m->num_faces++] = (face_t){{ base+0, base+3, base+2 }};
+                    m->faces[m->num_faces++] = (face_t){{ base+0, base+2, base+1 }};
+                }
             }
         }
     }
@@ -654,19 +669,22 @@ void model_make_dna(model_t *m)
     memset(m, 0, sizeof(*m));
     strncpy(m->name, "dna", sizeof(m->name) - 1);
 
-    int   steps    = 24;        // steps along the helix axis
-    int   tube_seg = 4;         // polygon sides for each tube cross-section
-    float helix_r  = 0.55f;    // radius of helix from centre axis
-    float tube_r   = 0.10f;    // radius of the tube itself
-    float pitch    = 2.0f;     // full height of one complete turn
-    float total_h  = 2.0f;     // total height of the helix
+    int   steps    = 20;        // steps along the helix axis
+    int   tube_seg = 4;         // polygon sides per tube ring
+    float helix_r  = 0.55f;    // radius of each strand from centre axis
+    float tube_r   = 0.09f;    // tube cross-section radius
+    float pitch    = 2.0f;     // height of one full twist
+    float total_h  = 2.0f;
     float y_bot    = -total_h * 0.5f;
 
-    // build each strand as a series of tube rings along the helix
-    // strand 0: phase 0, strand 1: phase pi
+    // ring_base[strand][step] = first vert index of that ring
+    // max 2 strands * 21 steps = 42 rings
+    int ring_base[2][21];
+
+    // ---- build both strands, record ring base indices ----
     for (int strand = 0; strand < 2; strand++) {
-        float phase = strand * (float)M_PI;
-        int prev_ring = -1;
+        float phase    = strand * (float)M_PI;
+        int   prev_ring = -1;
 
         for (int s = 0; s <= steps; s++) {
             float t     = (float)s / steps;
@@ -676,33 +694,26 @@ void model_make_dna(model_t *m)
             float cx = helix_r * cosf(angle);
             float cz = helix_r * sinf(angle);
 
-            // tangent direction (for tube orientation)
-            float da    = 2.0f * (float)M_PI * (total_h / pitch) / steps;
-            float tx    = -helix_r * sinf(angle) * da;
-            float ty    = total_h / steps;
-            float tz    =  helix_r * cosf(angle) * da;
-            float tlen  = sqrtf(tx*tx + ty*ty + tz*tz);
+            // helix tangent
+            float da   = 2.0f * (float)M_PI * (total_h / pitch) / steps;
+            float tx   = -helix_r * sinf(angle) * da;
+            float ty   =  total_h / steps;
+            float tz   =  helix_r * cosf(angle) * da;
+            float tlen = sqrtf(tx*tx + ty*ty + tz*tz);
             if (tlen > 1e-6f) { tx/=tlen; ty/=tlen; tz/=tlen; }
 
-            // two vectors perpendicular to tangent for the tube cross-section
-            // use world-up crossed with tangent to get radial basis
-            float ux, uy, uz; // up x tangent
-            ux = ty*0.0f - tz*1.0f;   // (0,1,0) x (tx,ty,tz)... simplified:
-            uy = tz*0.0f - tx*0.0f;
-            uz = tx*1.0f - ty*0.0f;
-            // actually: (0,1,0) x (tx,ty,tz) = (1*tz-0*ty, 0*tx-0*tz, 0*ty-1*tx)
-            //                                 = (tz, 0, -tx)
-            ux = tz; uy = 0.0f; uz = -tx;
-            float ulen = sqrtf(ux*ux + uy*uy + uz*uz);
-            if (ulen < 1e-6f) { ux = 1.0f; uy = 0.0f; uz = 0.0f; ulen = 1.0f; }
-            ux/=ulen; uy/=ulen; uz/=ulen;
-            // vx,vy,vz = tangent x u
+            // frame: u = (tz, 0, -tx) -- a radial-outward vector
+            float ux = tz, uy = 0.0f, uz = -tx;
+            float ulen = sqrtf(ux*ux + uz*uz);
+            if (ulen < 1e-6f) { ux = 1.0f; uz = 0.0f; }
+            else { ux/=ulen; uz/=ulen; }
+            // v = tangent x u
             float vx = ty*uz - tz*uy;
             float vy = tz*ux - tx*uz;
             float vz = tx*uy - ty*ux;
 
-            int cur_ring = m->num_verts;
-            if (cur_ring + tube_seg > MODEL_MAX_VERTS) goto dna_done;
+            if (m->num_verts + tube_seg > MODEL_MAX_VERTS) goto dna_done;
+            ring_base[strand][s] = m->num_verts;
 
             for (int k = 0; k < tube_seg; k++) {
                 float a = 2.0f * (float)M_PI * k / tube_seg;
@@ -715,37 +726,38 @@ void model_make_dna(model_t *m)
             }
 
             if (prev_ring >= 0) {
+                int cr = ring_base[strand][s];
+                int pr = prev_ring;
                 for (int k = 0; k < tube_seg; k++) {
                     int nk = (k + 1) % tube_seg;
                     if (m->num_faces + 2 > MODEL_MAX_FACES) goto dna_done;
-                    m->faces[m->num_faces++] = (face_t){{
-                        prev_ring+k, cur_ring+k, cur_ring+nk }};
-                    m->faces[m->num_faces++] = (face_t){{
-                        prev_ring+k, cur_ring+nk, prev_ring+nk }};
+                    m->faces[m->num_faces++] = (face_t){{ pr+k, cr+k,  cr+nk }};
+                    m->faces[m->num_faces++] = (face_t){{ pr+k, cr+nk, pr+nk }};
                 }
             }
-            prev_ring = cur_ring;
+            prev_ring = ring_base[strand][s];
         }
     }
 
-    // ---- rungs connecting the two strands ----
-    // one rung every 2 steps (every ~30 degrees)
-    int rung_every = 2;
-    // strand 0 rings start at vert 0, each ring has tube_seg verts
-    // strand 1 rings start at vert (steps+1)*tube_seg
-    int s0_base = 0;
-    int s1_base = (steps + 1) * tube_seg;
+    // ---- rungs: flat bar connecting one vertex on strand 0 to the
+    //      diametrically opposite vertex on strand 1, every 2 steps ----
+    for (int s = 0; s <= steps; s += 2) {
+        int r0 = ring_base[0][s];   // first vert of strand-0 ring
+        int r1 = ring_base[1][s];   // first vert of strand-1 ring
 
-    for (int s = 0; s <= steps; s += rung_every) {
-        // centre of strand 0 ring s
-        int r0 = s0_base + s * tube_seg;
-        int r1 = s1_base + s * tube_seg;
+        // the two "inner" verts are the ones closest to the centre axis;
+        // for a 4-sided tube they are at index 0 and 2 (opposite corners).
+        // build a flat quad: r0+0, r0+2 on strand 0 side to r1+0, r1+2
         if (r0 + tube_seg > m->num_verts) break;
         if (r1 + tube_seg > m->num_verts) break;
-        if (m->num_faces + 2 > MODEL_MAX_FACES) break;
-        // connect first vertex of each ring with a flat quad
-        m->faces[m->num_faces++] = (face_t){{ r0, r1, r1+1 }};
-        m->faces[m->num_faces++] = (face_t){{ r0, r1+1, r0+1 }};
+        if (m->num_faces + 4 > MODEL_MAX_FACES) break;
+
+        // two triangles forming the rung bar
+        m->faces[m->num_faces++] = (face_t){{ r0+0, r1+0, r1+2 }};
+        m->faces[m->num_faces++] = (face_t){{ r0+0, r1+2, r0+2 }};
+        // small end caps on the rung
+        m->faces[m->num_faces++] = (face_t){{ r0+1, r0+0, r0+2 }};
+        m->faces[m->num_faces++] = (face_t){{ r1+1, r1+2, r1+0 }};
     }
 
 dna_done:;
