@@ -739,25 +739,61 @@ void model_make_dna(model_t *m)
         }
     }
 
-    // ---- rungs: flat bar connecting one vertex on strand 0 to the
-    //      diametrically opposite vertex on strand 1, every 2 steps ----
+    // ---- rungs: a small 3D box spanning from strand 0 to strand 1
+    //      every 2 steps.  Uses add_box() so all 6 faces are present
+    //      and none get culled regardless of viewing angle. ----
+    float rung_hw = 0.06f;   // half-width of rung cross-section
     for (int s = 0; s <= steps; s += 2) {
-        int r0 = ring_base[0][s];   // first vert of strand-0 ring
-        int r1 = ring_base[1][s];   // first vert of strand-1 ring
+        // compute the helix centre positions for both strands at step s
+        float t      = (float)s / steps;
+        float y      = y_bot + t * total_h;
+        float angle0 = 2.0f * (float)M_PI * t * (total_h / pitch);
+        float angle1 = angle0 + (float)M_PI;
 
-        // the two "inner" verts are the ones closest to the centre axis;
-        // for a 4-sided tube they are at index 0 and 2 (opposite corners).
-        // build a flat quad: r0+0, r0+2 on strand 0 side to r1+0, r1+2
-        if (r0 + tube_seg > m->num_verts) break;
-        if (r1 + tube_seg > m->num_verts) break;
-        if (m->num_faces + 4 > MODEL_MAX_FACES) break;
+        float x0 = helix_r * cosf(angle0), z0 = helix_r * sinf(angle0);
+        float x1 = helix_r * cosf(angle1), z1 = helix_r * sinf(angle1);
 
-        // two triangles forming the rung bar
-        m->faces[m->num_faces++] = (face_t){{ r0+0, r1+0, r1+2 }};
-        m->faces[m->num_faces++] = (face_t){{ r0+0, r1+2, r0+2 }};
-        // small end caps on the rung
-        m->faces[m->num_faces++] = (face_t){{ r0+1, r0+0, r0+2 }};
-        m->faces[m->num_faces++] = (face_t){{ r1+1, r1+2, r1+0 }};
+        // direction along the rung (strand0 -> strand1), perpendicular to it
+        float dx = x1-x0, dz = z1-z0;
+        float dlen = sqrtf(dx*dx + dz*dz);
+        if (dlen < 1e-6f) continue;
+        // perpendicular in XZ: (-dz, dx) normalised
+        float px = -dz/dlen * rung_hw;
+        float pz =  dx/dlen * rung_hw;
+
+        if (m->num_verts + 8 > MODEL_MAX_VERTS) break;
+        if (m->num_faces + 12 > MODEL_MAX_FACES) break;
+
+        // 8 box corners: 4 at strand-0 end, 4 at strand-1 end
+        int b = m->num_verts;
+        m->verts[m->num_verts++] = (vec3_t){ x0+px, y-rung_hw, z0+pz };
+        m->verts[m->num_verts++] = (vec3_t){ x0-px, y-rung_hw, z0-pz };
+        m->verts[m->num_verts++] = (vec3_t){ x0-px, y+rung_hw, z0-pz };
+        m->verts[m->num_verts++] = (vec3_t){ x0+px, y+rung_hw, z0+pz };
+        m->verts[m->num_verts++] = (vec3_t){ x1+px, y-rung_hw, z1+pz };
+        m->verts[m->num_verts++] = (vec3_t){ x1-px, y-rung_hw, z1-pz };
+        m->verts[m->num_verts++] = (vec3_t){ x1-px, y+rung_hw, z1-pz };
+        m->verts[m->num_verts++] = (vec3_t){ x1+px, y+rung_hw, z1+pz };
+
+        // 6 faces x 2 triangles = 12 triangles
+        // strand-0 end cap
+        m->faces[m->num_faces++] = (face_t){{ b+0, b+1, b+2 }};
+        m->faces[m->num_faces++] = (face_t){{ b+0, b+2, b+3 }};
+        // strand-1 end cap
+        m->faces[m->num_faces++] = (face_t){{ b+4, b+6, b+5 }};
+        m->faces[m->num_faces++] = (face_t){{ b+4, b+7, b+6 }};
+        // top face
+        m->faces[m->num_faces++] = (face_t){{ b+3, b+2, b+6 }};
+        m->faces[m->num_faces++] = (face_t){{ b+3, b+6, b+7 }};
+        // bottom face
+        m->faces[m->num_faces++] = (face_t){{ b+0, b+5, b+1 }};
+        m->faces[m->num_faces++] = (face_t){{ b+0, b+4, b+5 }};
+        // side A
+        m->faces[m->num_faces++] = (face_t){{ b+0, b+3, b+7 }};
+        m->faces[m->num_faces++] = (face_t){{ b+0, b+7, b+4 }};
+        // side B
+        m->faces[m->num_faces++] = (face_t){{ b+1, b+5, b+6 }};
+        m->faces[m->num_faces++] = (face_t){{ b+1, b+6, b+2 }};
     }
 
 dna_done:;
