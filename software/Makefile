@@ -34,6 +34,14 @@ DEMO_HDRS := userspace/geometry.h userspace/model.h \
 demo: $(DEMO_SRCS) $(DEMO_HDRS)
 	$(CC) $(CFLAGS) -o demo $(DEMO_SRCS) -lm -lusb-1.0
 
+# Standalone bottleneck profiler. Not part of the default userspace target
+# so the working interactive demo path remains untouched.
+bottleneck_probe: userspace/bottleneck_probe.c userspace/geometry.c \
+                  userspace/model.c userspace/geometry.h \
+                  userspace/model.h kernel/avalon_kernel.h
+	$(CC) $(CFLAGS) -o bottleneck_probe userspace/bottleneck_probe.c \
+	    userspace/geometry.c userspace/model.c -lm
+
 # Compile the device tree blob → socfpga.dtb
 socfpga.dtb: socfpga.dts
 	dtc -O dtb -o socfpga.dtb socfpga.dts
@@ -41,6 +49,6 @@ socfpga.dtb: socfpga.dts
 # Clean everything
 clean:
 	$(MAKE) -C $(KERNEL_SOURCE) M=$(PWD)/kernel clean
-	$(RM) rasterizer_test demo socfpga.dtb
+	$(RM) rasterizer_test demo bottleneck_probe socfpga.dtb
 
 endif
