@@ -26,7 +26,8 @@
 //   w/s     - tilt up/down (rotate X)
 //   a/d     - rotate left/right (rotate Y)
 //   +/-     - zoom in/out
-//   1-0     - switch built-in models (see runtime printout)
+//   1-0     - switch existing numbered models (unchanged mapping)
+//   b/m/n   - switch to obj1/obj2/obj3 if present
 //   [argv]  - optional OBJ loaded from command-line argument
 //   r       - reset rotation and zoom
 //   SPACE   - toggle auto-rotate
@@ -268,35 +269,110 @@ static int render_frame(int fd, const model_t *model,
     return submitted;
 }
 
+// Try loading a named OBJ from a small set of clear relative paths.
+// stem="obj1" will probe: obj1, obj1.obj, ./obj1, ./obj1.obj, ../obj1, ../obj1.obj
+// Returns 0 on success and writes the winning path to loaded_path.
+static int load_named_obj(model_t *out, const char *stem,
+                          char *loaded_path, size_t loaded_path_sz)
+{
+    char candidates[6][128];
+    snprintf(candidates[0], sizeof(candidates[0]), "%s", stem);
+    snprintf(candidates[1], sizeof(candidates[1]), "%s.obj", stem);
+    snprintf(candidates[2], sizeof(candidates[2]), "./%s", stem);
+    snprintf(candidates[3], sizeof(candidates[3]), "./%s.obj", stem);
+    snprintf(candidates[4], sizeof(candidates[4]), "../%s", stem);
+    snprintf(candidates[5], sizeof(candidates[5]), "../%s.obj", stem);
+
+    for (int i = 0; i < 6; i++) {
+        if (model_load_obj(out, candidates[i]) == 0) {
+            if (loaded_path && loaded_path_sz > 0) {
+                snprintf(loaded_path, loaded_path_sz, "%s", candidates[i]);
+            }
+            return 0;
+        }
+    }
+
+    if (loaded_path && loaded_path_sz > 0) loaded_path[0] = '\0';
+    return -1;
+}
+
 // ---- main ----
 
 int main(int argc, char *argv[])
 {
     // ---- build model library ----
 
-    static model_t models[11];
+    enum {
+        MODEL_CUBE = 0,
+        MODEL_SPHERE_LO,
+        MODEL_SPHERE_MED,
+        MODEL_TORUS,
+        MODEL_TEAPOT,
+        MODEL_SATURN,
+        MODEL_LEGO,
+        MODEL_DNA,
+        MODEL_TEAPOT_552,
+        MODEL_MINIFIG,
+        MODEL_ARGV_OBJ,
+        MODEL_OBJ1,
+        MODEL_OBJ2,
+        MODEL_OBJ3,
+        MODEL_COUNT
+    };
+
+    static model_t models[MODEL_COUNT];
     int num_models = 10;
+    int obj1_loaded = 0, obj2_loaded = 0, obj3_loaded = 0;
+    char obj1_path[128], obj2_path[128], obj3_path[128];
 
-    model_make_cube(&models[0]);
-    model_make_icosphere(&models[1], 1);         // 80 faces
-    model_make_icosphere(&models[2], 2);         // 320 faces
-    model_make_torus(&models[3], 12, 8, 0.7f, 0.3f);
-    model_make_teapot(&models[4]);               // Utah teapot ~576 faces
-    model_make_saturn(&models[5]);               // Saturn + rings ~368 faces
-    model_make_lego(&models[6]);                 // Lego 2x4 brick ~204 faces
-    model_make_dna(&models[7]);                  // DNA double helix ~300 faces
-    model_make_teapot_552(&models[8]);           // Utah teapot OBJ-552
+    model_make_cube(&models[MODEL_CUBE]);
+    model_make_icosphere(&models[MODEL_SPHERE_LO], 1);       // 80 faces
+    model_make_icosphere(&models[MODEL_SPHERE_MED], 2);      // 320 faces
+    model_make_torus(&models[MODEL_TORUS], 12, 8, 0.7f, 0.3f);
+    model_make_teapot(&models[MODEL_TEAPOT]);                // ~576 faces
+    model_make_saturn(&models[MODEL_SATURN]);                // ~368 faces
+    model_make_lego(&models[MODEL_LEGO]);                    // ~204 faces
+    model_make_dna(&models[MODEL_DNA]);                      // ~300 faces
+    model_make_teapot_552(&models[MODEL_TEAPOT_552]);        // 552 faces
 
-    model_make_minifigure(&models[9]);           // Lego minifigure ~170 faces
+    model_make_minifigure(&models[MODEL_MINIFIG]);           // ~170 faces
 
     if (argc >= 2) {
-        if (model_load_obj(&models[10], argv[1]) == 0) {
+        if (model_load_obj(&models[MODEL_ARGV_OBJ], argv[1]) == 0) {
             printf("Loaded %s: %d verts, %d faces\n",
-                   argv[1], models[10].num_verts, models[10].num_faces);
+                   argv[1],
+                   models[MODEL_ARGV_OBJ].num_verts,
+                   models[MODEL_ARGV_OBJ].num_faces);
             num_models = 11;
         } else {
             fprintf(stderr, "Warning: could not load %s\n", argv[1]);
         }
+    }
+
+    // Extra direct OBJ bindings on letter keys (without touching number mappings).
+    if (load_named_obj(&models[MODEL_OBJ1], "obj1", obj1_path, sizeof(obj1_path)) == 0) {
+        obj1_loaded = 1;
+        strncpy(models[MODEL_OBJ1].name, "obj1", sizeof(models[MODEL_OBJ1].name) - 1);
+        models[MODEL_OBJ1].name[sizeof(models[MODEL_OBJ1].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_OBJ1]);
+        strncpy(models[MODEL_OBJ1].name, "obj1_missing", sizeof(models[MODEL_OBJ1].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_OBJ2], "obj2", obj2_path, sizeof(obj2_path)) == 0) {
+        obj2_loaded = 1;
+        strncpy(models[MODEL_OBJ2].name, "obj2", sizeof(models[MODEL_OBJ2].name) - 1);
+        models[MODEL_OBJ2].name[sizeof(models[MODEL_OBJ2].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_OBJ2]);
+        strncpy(models[MODEL_OBJ2].name, "obj2_missing", sizeof(models[MODEL_OBJ2].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_OBJ3], "obj3", obj3_path, sizeof(obj3_path)) == 0) {
+        obj3_loaded = 1;
+        strncpy(models[MODEL_OBJ3].name, "obj3", sizeof(models[MODEL_OBJ3].name) - 1);
+        models[MODEL_OBJ3].name[sizeof(models[MODEL_OBJ3].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_OBJ3]);
+        strncpy(models[MODEL_OBJ3].name, "obj3_missing", sizeof(models[MODEL_OBJ3].name) - 1);
     }
 
     // ---- open rasterizer device ----
@@ -333,7 +409,14 @@ int main(int argc, char *argv[])
     printf("  8       - dna helix\n");
     printf("  9       - teapot_552\n");
     printf("  0       - minifigure\n");
-    if (num_models > 10) printf("  (OBJ)   - %s\n", models[10].name);
+    printf("  b       - obj1\n");
+    printf("  m       - obj2\n");
+    printf("  n       - obj3\n");
+    if (num_models > 10) printf("  (OBJ)   - %s\n", models[MODEL_ARGV_OBJ].name);
+    printf("OBJ key mapping:\n");
+    printf("  b -> obj1: %s\n", obj1_loaded ? obj1_path : "NOT FOUND");
+    printf("  m -> obj2: %s\n", obj2_loaded ? obj2_path : "NOT FOUND");
+    printf("  n -> obj3: %s\n", obj3_loaded ? obj3_path : "NOT FOUND");
     printf("  r       - reset rotation\n");
     printf("  SPACE   - toggle auto-rotate\n");
     printf("  ESC/q   - quit\n");
@@ -376,16 +459,28 @@ int main(int argc, char *argv[])
 
         // ---- one-shot keys: fire only on the leading edge ----
         if (g_key_pressed[KEY_ESC] || g_key_pressed[KEY_Q]) running = 0;
-        if (g_key_pressed[KEY_1]) current_model = 0;
-        if (g_key_pressed[KEY_2]) current_model = 1;
-        if (g_key_pressed[KEY_3]) current_model = 2;
-        if (g_key_pressed[KEY_4]) current_model = 3;
-        if (g_key_pressed[KEY_5]) current_model = 4;
-        if (g_key_pressed[KEY_6]) current_model = 5;
-        if (g_key_pressed[KEY_7]) current_model = 6;
-        if (g_key_pressed[KEY_8]) current_model = 7;
-        if (g_key_pressed[KEY_9]) current_model = 8;
-        if (g_key_pressed[KEY_0]) current_model = 9;
+        if (g_key_pressed[KEY_1]) current_model = MODEL_CUBE;
+        if (g_key_pressed[KEY_2]) current_model = MODEL_SPHERE_LO;
+        if (g_key_pressed[KEY_3]) current_model = MODEL_SPHERE_MED;
+        if (g_key_pressed[KEY_4]) current_model = MODEL_TORUS;
+        if (g_key_pressed[KEY_5]) current_model = MODEL_TEAPOT;
+        if (g_key_pressed[KEY_6]) current_model = MODEL_SATURN;
+        if (g_key_pressed[KEY_7]) current_model = MODEL_LEGO;
+        if (g_key_pressed[KEY_8]) current_model = MODEL_DNA;
+        if (g_key_pressed[KEY_9]) current_model = MODEL_TEAPOT_552;
+        if (g_key_pressed[KEY_0]) current_model = MODEL_MINIFIG;
+        if (g_key_pressed[KEY_B]) {
+            if (obj1_loaded) current_model = MODEL_OBJ1;
+            else fprintf(stderr, "\nobj1 not found. Expected obj1 or obj1.obj.\n");
+        }
+        if (g_key_pressed[KEY_M]) {
+            if (obj2_loaded) current_model = MODEL_OBJ2;
+            else fprintf(stderr, "\nobj2 not found. Expected obj2 or obj2.obj.\n");
+        }
+        if (g_key_pressed[KEY_N]) {
+            if (obj3_loaded) current_model = MODEL_OBJ3;
+            else fprintf(stderr, "\nobj3 not found. Expected obj3 or obj3.obj.\n");
+        }
         if (g_key_pressed[KEY_R]) {
             rot_x = 25.0f; rot_y = 45.0f; rot_z = 0.0f; cam_dist = 4.0f;
         }
