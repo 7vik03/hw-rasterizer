@@ -86,7 +86,7 @@ static int submit_triangle(int fd, const triangle_packet_t *pkt,
 
         if (ra.status.fifo_full) {
             stats->fifo_full_polls++;
-            usleep(100);
+            //usleep(100);
             continue;
         }
 
@@ -122,7 +122,7 @@ static int wait_present(int fd, long *status_polls)
         (*status_polls)++;
         if (!ra.status.swap_busy)
             return 0;
-        usleep(100);
+        //usleep(100);
     }
 }
 

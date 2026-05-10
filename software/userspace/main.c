@@ -73,7 +73,7 @@ static int submit_triangle(int fd, const triangle_packet_t *pkt)
         memset(&ra, 0, sizeof(ra));
         if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0) return -1;
         if (ra.status.fifo_full) {
-            usleep(100);
+            //usleep(100);
             continue;
         }
 
@@ -152,7 +152,7 @@ static void poll_keys(void)
     int rc = libusb_interrupt_transfer(g_keyboard, g_endpoint,
                                        (unsigned char *)&g_pkt_cur,
                                        sizeof(g_pkt_cur),
-                                       &transferred, 16);
+                                       &transferred, 5);
     if (rc != 0 || transferred != (int)sizeof(g_pkt_cur))
         g_pkt_cur = g_pkt_prev;  // no new report: preserve last known state
 
@@ -517,7 +517,7 @@ int main(int argc, char *argv[])
         //
         // Phase 1 typically resolves in microseconds (the FPGA clock
         // is ~50 MHz vs. ioctl round-trip latency), so no sleep needed.
-        // Phase 2 waits for a full VGA frame (~16 ms), so usleep(100)
+        // Phase 2 waits for a full VGA frame (~16 ms), so //usleep(100)
         // between polls keeps CPU usage in check.
         rasterizer_arg_t ra;
         int present_failed = 0;
@@ -543,7 +543,7 @@ int main(int argc, char *argv[])
                 break;
             }
             if (!ra.status.swap_busy) break;
-            usleep(100);
+            //usleep(100);
         }
 
         if (present_failed) { running = 0; break; }

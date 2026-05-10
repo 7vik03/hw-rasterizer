@@ -1,1 +1,0 @@
-cmd_/root/finalProjectSW/software/kernel/avalon_kernel.ko := ld -r  -EL -T ./scripts/module-common.lds -T ./arch/arm/kernel/module.lds  --build-id  -o /root/finalProjectSW/software/kernel/avalon_kernel.ko /root/finalProjectSW/software/kernel/avalon_kernel.o /root/finalProjectSW/software/kernel/avalon_kernel.mod.o ;  true

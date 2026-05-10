@@ -13,8 +13,8 @@
 /* Mesh storage                                                         */
 /* ------------------------------------------------------------------ */
 
-#define MODEL_MAX_VERTS  4096
-#define MODEL_MAX_FACES  2048
+#define MODEL_MAX_VERTS  131072
+#define MODEL_MAX_FACES  262144
 
 typedef struct {
     int v[3];   /* indices into verts[] */
