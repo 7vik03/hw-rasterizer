@@ -275,15 +275,13 @@ static int render_frame(int fd, const model_t *model,
 static int load_named_obj(model_t *out, const char *stem,
                           char *loaded_path, size_t loaded_path_sz)
 {
-    char candidates[6][128];
-    snprintf(candidates[0], sizeof(candidates[0]), "%s", stem);
-    snprintf(candidates[1], sizeof(candidates[1]), "%s.obj", stem);
-    snprintf(candidates[2], sizeof(candidates[2]), "./%s", stem);
-    snprintf(candidates[3], sizeof(candidates[3]), "./%s.obj", stem);
-    snprintf(candidates[4], sizeof(candidates[4]), "../%s", stem);
-    snprintf(candidates[5], sizeof(candidates[5]), "../%s.obj", stem);
+    char candidates[4][128];
+    snprintf(candidates[0], sizeof(candidates[0]), "models/%s", stem);
+    snprintf(candidates[1], sizeof(candidates[1]), "models/%s.obj", stem);
+    snprintf(candidates[2], sizeof(candidates[2]), "%s", stem);
+    snprintf(candidates[3], sizeof(candidates[3]), "%s.obj", stem);
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 4; i++) {
         if (model_load_obj(out, candidates[i]) == 0) {
             if (loaded_path && loaded_path_sz > 0) {
                 snprintf(loaded_path, loaded_path_sz, "%s", candidates[i]);
@@ -295,6 +293,8 @@ static int load_named_obj(model_t *out, const char *stem,
     if (loaded_path && loaded_path_sz > 0) loaded_path[0] = '\0';
     return -1;
 }
+// OBJ files are expected in software/models/ (e.g. models/obj1.obj).
+// Falls back to software/ itself (e.g. obj1.obj) if not found there.
 
 // ---- main ----
 
@@ -471,15 +471,15 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_0]) current_model = MODEL_MINIFIG;
         if (g_key_pressed[KEY_B]) {
             if (obj1_loaded) current_model = MODEL_OBJ1;
-            else fprintf(stderr, "\nobj1 not found. Expected obj1 or obj1.obj.\n");
+            else fprintf(stderr, "\nobj1 not found. Place it at software/models/obj1.obj\n");
         }
         if (g_key_pressed[KEY_M]) {
             if (obj2_loaded) current_model = MODEL_OBJ2;
-            else fprintf(stderr, "\nobj2 not found. Expected obj2 or obj2.obj.\n");
+            else fprintf(stderr, "\nobj2 not found. Place it at software/models/obj2.obj\n");
         }
         if (g_key_pressed[KEY_N]) {
             if (obj3_loaded) current_model = MODEL_OBJ3;
-            else fprintf(stderr, "\nobj3 not found. Expected obj3 or obj3.obj.\n");
+            else fprintf(stderr, "\nobj3 not found. Place it at software/models/obj3.obj\n");
         }
         if (g_key_pressed[KEY_R]) {
             rot_x = 25.0f; rot_y = 45.0f; rot_z = 0.0f; cam_dist = 4.0f;
