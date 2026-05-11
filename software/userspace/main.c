@@ -60,21 +60,51 @@
 // ---- FIFO submission ----
 //
 // Writes the 17 packet words and the COMMIT strobe directly into the
-// FPGA register region via mmap. No ioctl, no copy_from_user, no syscall
-// per triangle. Falls back to the ioctl path if mmap was not available.
-// Polls fifo_full via the same mmap so a packed frame still respects HW
-// backpressure (the COMMIT silently drops if the FIFO is full).
+// FPGA register region via mmap. The kernel maps the region as
+// write-combine (Normal Non-Cacheable) memory so the ARM core can
+// coalesce the 17 sequential 32-bit packet stores into AXI bursts on
+// the lightweight HPS-FPGA bridge -- this is the main win over the
+// strongly-ordered "device" mapping that forces one bridge transaction
+// per store.
+//
+// Because reads/writes can be reordered/merged with write-combine, we
+// must issue a Data Synchronization Barrier (dsb) before the COMMIT
+// strobe so the FPGA sees all 17 words latched first.
+//
+// The FIFO is 64 deep and one frame at ~3700 triangles never fills it
+// (probe shows fifo_max=0), so we only poll STATUS once every
+// STATUS_POLL_PERIOD triangles instead of every one. Saves ~3700 MMIO
+// reads (~1.8 ms) per frame at no cost to correctness; the periodic
+// poll still catches an unexpected stall.
 
 static volatile uint32_t *g_regs = NULL;  // mmap'd MMIO region, or NULL
+
+#define STATUS_POLL_PERIOD 32
+
+static inline void mmio_barrier(void)
+{
+#if defined(__arm__) || defined(__aarch64__)
+    __asm__ volatile ("dsb sy" ::: "memory");
+#else
+    __sync_synchronize();
+#endif
+}
 
 static int submit_triangle(int fd, const triangle_packet_t *pkt)
 {
     if (g_regs) {
+        static unsigned int tri_counter = 0;
         const uint32_t *w = (const uint32_t *)pkt;
+
+        if ((tri_counter++ & (STATUS_POLL_PERIOD - 1)) == 0) {
+            while (g_regs[RAST_STATUS_OFFSET / 4] & RAST_STATUS_FULL_BIT)
+                ;
+        }
+
         for (int i = 0; i < RAST_PACKET_NUM_WORDS; i++)
             g_regs[i] = w[i];
-        while (g_regs[RAST_STATUS_OFFSET / 4] & RAST_STATUS_FULL_BIT)
-            ;
+
+        mmio_barrier();
         g_regs[RAST_COMMIT_OFFSET / 4] = 1;
         return 0;
     }

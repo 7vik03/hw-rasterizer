@@ -131,9 +131,14 @@ static long rasterizer_ioctl(struct file *f, unsigned int cmd,
 }
 
 // mmap the MMIO register region directly into userspace so the demo can
-// write triangle packets without one ioctl per triangle. Maps the same
-// physical region that of_iomap() gave us, but with non-cached prot so
-// every store reaches the AXI bridge in order.
+// write triangle packets without one ioctl per triangle. We use
+// pgprot_writecombine (Normal Non-Cacheable on ARMv7) instead of
+// pgprot_noncached (strongly-ordered Device memory) so that the CPU can
+// coalesce the 17 sequential 32-bit packet writes into AXI bursts. The
+// FPGA latches the packet only when the COMMIT register is written, so
+// reordering and merging among the 17 word writes is safe; userspace
+// must insert a dsb() barrier before issuing COMMIT to guarantee that
+// all 17 stores have drained.
 static int rasterizer_mmap(struct file *f, struct vm_area_struct *vma)
 {
     unsigned long size  = vma->vm_end - vma->vm_start;
@@ -144,7 +149,7 @@ static int rasterizer_mmap(struct file *f, struct vm_area_struct *vma)
     if (vma->vm_pgoff != 0)            return -EINVAL;
     if (size > limit)                  return -EINVAL;
 
-    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 
     if (remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot))
         return -EAGAIN;
