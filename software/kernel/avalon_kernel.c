@@ -11,6 +11,7 @@
 #include <linux/of_address.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/mm.h>
 #include "avalon_kernel.h"
 
 #define DRIVER_NAME "rasterizer"
@@ -129,9 +130,32 @@ static long rasterizer_ioctl(struct file *f, unsigned int cmd,
     return 0;
 }
 
+// mmap the MMIO register region directly into userspace so the demo can
+// write triangle packets without one ioctl per triangle. Maps the same
+// physical region that of_iomap() gave us, but with non-cached prot so
+// every store reaches the AXI bridge in order.
+static int rasterizer_mmap(struct file *f, struct vm_area_struct *vma)
+{
+    unsigned long size  = vma->vm_end - vma->vm_start;
+    unsigned long phys  = (unsigned long)dev.res.start;
+    unsigned long pfn   = phys >> PAGE_SHIFT;
+    unsigned long limit = PAGE_ALIGN(resource_size(&dev.res));
+
+    if (vma->vm_pgoff != 0)            return -EINVAL;
+    if (size > limit)                  return -EINVAL;
+
+    vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+    if (remap_pfn_range(vma, vma->vm_start, pfn, size, vma->vm_page_prot))
+        return -EAGAIN;
+
+    return 0;
+}
+
 static const struct file_operations rasterizer_fops = {
     .owner          = THIS_MODULE,
     .unlocked_ioctl = rasterizer_ioctl,
+    .mmap           = rasterizer_mmap,
 };
 
 static struct miscdevice rasterizer_misc_device = {

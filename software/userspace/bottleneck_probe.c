@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -42,6 +43,7 @@ typedef struct {
 } frame_stats_t;
 
 static screen_vertex_t g_sv[MODEL_MAX_VERTS];
+static volatile uint32_t *g_regs = NULL;
 
 static double elapsed_sec(struct timespec a, struct timespec b)
 {
@@ -74,6 +76,24 @@ static void project_vertices(const model_t *model, const mat4_t *mvp)
 static int submit_triangle(int fd, const triangle_packet_t *pkt,
                            submit_stats_t *stats)
 {
+    if (g_regs) {
+        const uint32_t *w = (const uint32_t *)pkt;
+        for (int i = 0; i < RAST_PACKET_NUM_WORDS; i++)
+            g_regs[i] = w[i];
+        uint32_t status = g_regs[RAST_STATUS_OFFSET / 4];
+        stats->status_polls++;
+        unsigned int level = status & RAST_STATUS_LEVEL_MASK;
+        if (level > stats->max_fifo_level)
+            stats->max_fifo_level = level;
+        while (status & RAST_STATUS_FULL_BIT) {
+            stats->fifo_full_polls++;
+            status = g_regs[RAST_STATUS_OFFSET / 4];
+            stats->status_polls++;
+        }
+        g_regs[RAST_COMMIT_OFFSET / 4] = 1;
+        return 0;
+    }
+
     rasterizer_arg_t ra;
     memset(&ra, 0, sizeof(ra));
     ra.packet = *pkt;
@@ -252,6 +272,16 @@ int main(int argc, char **argv)
             fprintf(stderr, "try --dry-run for software-only profiling\n");
             return 1;
         }
+        void *mapped = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
+                            MAP_SHARED, fd, 0);
+        if (mapped != MAP_FAILED) {
+            g_regs = (volatile uint32_t *)mapped;
+            fprintf(stderr, "mmap OK: direct MMIO submission enabled\n");
+        } else {
+            g_regs = NULL;
+            fprintf(stderr, "mmap failed (%s); using ioctl fallback\n",
+                    strerror(errno));
+        }
     }
 
     printf("frame,model,faces,built,culled,render_ms,setup_ms,submit_ms,"
@@ -311,6 +341,9 @@ int main(int argc, char **argv)
         fflush(stdout);
     }
 
-    if (fd >= 0) close(fd);
+    if (fd >= 0) {
+        if (g_regs) munmap((void *)g_regs, 4096);
+        close(fd);
+    }
     return 0;
 }

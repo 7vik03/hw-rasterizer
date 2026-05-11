@@ -43,6 +43,7 @@
 #include <errno.h>
 #include <time.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <libusb-1.0/libusb.h>
 
 #include "../kernel/avalon_kernel.h"
@@ -58,14 +59,26 @@
 
 // ---- FIFO submission ----
 //
-// Spins on RASTERIZER_STATUS until the hardware FIFO has a free slot,
-// then issues RASTERIZER_SUBMIT.  Uses a flat loop so the stack cannot
-// overflow if the FIFO stays full for an extended period (the recursive
-// version would overflow on a stalled hardware pipeline).
-// Returns 0 on success, -1 on ioctl error.
+// Writes the 17 packet words and the COMMIT strobe directly into the
+// FPGA register region via mmap. No ioctl, no copy_from_user, no syscall
+// per triangle. Falls back to the ioctl path if mmap was not available.
+// Polls fifo_full via the same mmap so a packed frame still respects HW
+// backpressure (the COMMIT silently drops if the FIFO is full).
+
+static volatile uint32_t *g_regs = NULL;  // mmap'd MMIO region, or NULL
 
 static int submit_triangle(int fd, const triangle_packet_t *pkt)
 {
+    if (g_regs) {
+        const uint32_t *w = (const uint32_t *)pkt;
+        for (int i = 0; i < RAST_PACKET_NUM_WORDS; i++)
+            g_regs[i] = w[i];
+        while (g_regs[RAST_STATUS_OFFSET / 4] & RAST_STATUS_FULL_BIT)
+            ;
+        g_regs[RAST_COMMIT_OFFSET / 4] = 1;
+        return 0;
+    }
+
     rasterizer_arg_t ra;
     memset(&ra, 0, sizeof(ra));
     ra.packet = *pkt;
@@ -369,6 +382,21 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // Try to mmap the MMIO region. If it succeeds, submit_triangle()
+    // will write packets directly via memory stores instead of ioctl.
+    // If it fails (older kernel module without mmap support) we silently
+    // fall back to the ioctl path.
+    void *mapped = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
+                        MAP_SHARED, fd, 0);
+    if (mapped != MAP_FAILED) {
+        g_regs = (volatile uint32_t *)mapped;
+        printf("mmap OK: direct MMIO submission enabled\n");
+    } else {
+        g_regs = NULL;
+        fprintf(stderr, "mmap failed (%s); using ioctl fallback\n",
+                strerror(errno));
+    }
+
     // ---- open USB keyboard ----
 
     if (keyboard_init() < 0) {
@@ -551,6 +579,7 @@ int main(int argc, char *argv[])
 
     printf("\nDone. %ld frames rendered.\n", frame);
     keyboard_close();
+    if (g_regs) munmap((void *)g_regs, 4096);
     close(fd);
     return 0;
 }
