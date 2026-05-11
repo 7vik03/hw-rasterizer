@@ -334,12 +334,9 @@ int main(int argc, char *argv[])
         MODEL_SPHERE_LO,
         MODEL_SPHERE_MED,
         MODEL_TORUS,
-        MODEL_TEAPOT,
         MODEL_SATURN,
         MODEL_LEGO,
         MODEL_DNA,
-        MODEL_TEAPOT_552,
-        MODEL_MINIFIG,
         MODEL_ARGV_OBJ,
         MODEL_OBJ1,
         MODEL_OBJ2,
@@ -348,7 +345,7 @@ int main(int argc, char *argv[])
     };
 
     static model_t models[MODEL_COUNT];
-    int num_models = 10;
+    int num_models = 7;
     int obj1_loaded = 0, obj2_loaded = 0, obj3_loaded = 0;
     char obj1_path[128], obj2_path[128], obj3_path[128];
 
@@ -356,13 +353,9 @@ int main(int argc, char *argv[])
     model_make_icosphere(&models[MODEL_SPHERE_LO], 1);       // 80 faces
     model_make_icosphere(&models[MODEL_SPHERE_MED], 2);      // 320 faces
     model_make_torus(&models[MODEL_TORUS], 12, 8, 0.7f, 0.3f);
-    model_make_teapot(&models[MODEL_TEAPOT]);                // ~576 faces
     model_make_saturn(&models[MODEL_SATURN]);                // ~368 faces
     model_make_lego(&models[MODEL_LEGO]);                    // ~204 faces
     model_make_dna(&models[MODEL_DNA]);                      // ~300 faces
-    model_make_teapot_552(&models[MODEL_TEAPOT_552]);        // 552 faces
-
-    model_make_minifigure(&models[MODEL_MINIFIG]);           // ~170 faces
 
     if (argc >= 2) {
         if (model_load_obj(&models[MODEL_ARGV_OBJ], argv[1]) == 0) {
@@ -370,7 +363,7 @@ int main(int argc, char *argv[])
                    argv[1],
                    models[MODEL_ARGV_OBJ].num_verts,
                    models[MODEL_ARGV_OBJ].num_faces);
-            num_models = 11;
+            num_models = 8;
         } else {
             fprintf(stderr, "Warning: could not load %s\n", argv[1]);
         }
@@ -445,12 +438,9 @@ int main(int argc, char *argv[])
     printf("  2       - sphere lo\n");
     printf("  3       - sphere med\n");
     printf("  4       - torus\n");
-    printf("  5       - teapot\n");
-    printf("  6       - saturn\n");
-    printf("  7       - lego brick\n");
-    printf("  8       - dna helix\n");
-    printf("  9       - teapot_552\n");
-    printf("  0       - minifigure\n");
+    printf("  5       - saturn\n");
+    printf("  6       - lego brick\n");
+    printf("  7       - dna helix\n");
     printf("  b       - obj1\n");
     printf("  m       - obj2\n");
     printf("  n       - obj3\n");
@@ -505,12 +495,9 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_2]) current_model = MODEL_SPHERE_LO;
         if (g_key_pressed[KEY_3]) current_model = MODEL_SPHERE_MED;
         if (g_key_pressed[KEY_4]) current_model = MODEL_TORUS;
-        if (g_key_pressed[KEY_5]) current_model = MODEL_TEAPOT;
-        if (g_key_pressed[KEY_6]) current_model = MODEL_SATURN;
-        if (g_key_pressed[KEY_7]) current_model = MODEL_LEGO;
-        if (g_key_pressed[KEY_8]) current_model = MODEL_DNA;
-        if (g_key_pressed[KEY_9]) current_model = MODEL_TEAPOT_552;
-        if (g_key_pressed[KEY_0]) current_model = MODEL_MINIFIG;
+        if (g_key_pressed[KEY_5]) current_model = MODEL_SATURN;
+        if (g_key_pressed[KEY_6]) current_model = MODEL_LEGO;
+        if (g_key_pressed[KEY_7]) current_model = MODEL_DNA;
         if (g_key_pressed[KEY_B]) {
             if (obj1_loaded) current_model = MODEL_OBJ1;
             else fprintf(stderr, "\nobj1 not found. Place it at software/models/obj1.obj\n");
