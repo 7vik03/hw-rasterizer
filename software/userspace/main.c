@@ -335,6 +335,7 @@ int main(int argc, char *argv[])
         MODEL_SPHERE_MED,
         MODEL_SPHERE_HI,
         MODEL_SPHERE_ULTRA,
+        MODEL_SPHERE_MAX,
         MODEL_TORUS,
         MODEL_SATURN,
         MODEL_LEGO,
@@ -347,15 +348,16 @@ int main(int argc, char *argv[])
     };
 
     static model_t models[MODEL_COUNT];
-    int num_models = 9;
+    int num_models = 10;
     int obj1_loaded = 0, obj2_loaded = 0, obj3_loaded = 0;
     char obj1_path[128], obj2_path[128], obj3_path[128];
 
     model_make_cube(&models[MODEL_CUBE]);
-    model_make_icosphere(&models[MODEL_SPHERE_LO],    1);  //    80 faces
-    model_make_icosphere(&models[MODEL_SPHERE_MED],   2);  //   320 faces
-    model_make_icosphere(&models[MODEL_SPHERE_HI],    3);  // 1,280 faces
-    model_make_icosphere(&models[MODEL_SPHERE_ULTRA], 4);  // 5,120 faces
+    model_make_icosphere(&models[MODEL_SPHERE_LO],    1);  //     80 faces
+    model_make_icosphere(&models[MODEL_SPHERE_MED],   2);  //    320 faces
+    model_make_icosphere(&models[MODEL_SPHERE_HI],    3);  //  1,280 faces
+    model_make_icosphere(&models[MODEL_SPHERE_ULTRA], 4);  //  5,120 faces
+    model_make_icosphere(&models[MODEL_SPHERE_MAX],   5);  // 20,480 faces
     model_make_torus(&models[MODEL_TORUS], 12, 8, 0.7f, 0.3f);
     model_make_saturn(&models[MODEL_SATURN]);                // ~368 faces
     model_make_lego(&models[MODEL_LEGO]);                    // ~204 faces
@@ -443,6 +445,7 @@ int main(int argc, char *argv[])
     printf("  3       - sphere med  (320 tris)\n");
     printf("  4       - sphere hi   (1280 tris)\n");
     printf("  5       - sphere max  (5120 tris)\n");
+    printf("  0       - sphere stress (20480 tris)\n");
     printf("  6       - torus\n");
     printf("  7       - saturn\n");
     printf("  8       - lego brick\n");
@@ -502,6 +505,7 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_3]) current_model = MODEL_SPHERE_MED;
         if (g_key_pressed[KEY_4]) current_model = MODEL_SPHERE_HI;
         if (g_key_pressed[KEY_5]) current_model = MODEL_SPHERE_ULTRA;
+        if (g_key_pressed[KEY_0]) current_model = MODEL_SPHERE_MAX;
         if (g_key_pressed[KEY_6]) current_model = MODEL_TORUS;
         if (g_key_pressed[KEY_7]) current_model = MODEL_SATURN;
         if (g_key_pressed[KEY_8]) current_model = MODEL_LEGO;
