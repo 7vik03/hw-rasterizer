@@ -75,33 +75,13 @@ static int submit_triangle(int fd, const triangle_packet_t *pkt,
                            submit_stats_t *stats)
 {
     rasterizer_arg_t ra;
-
-    for (;;) {
-        memset(&ra, 0, sizeof(ra));
-        if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0) return -1;
-
-        stats->status_polls++;
-        if (ra.status.fifo_level > stats->max_fifo_level)
-            stats->max_fifo_level = ra.status.fifo_level;
-
-        if (ra.status.fifo_full) {
-            stats->fifo_full_polls++;
-            //usleep(100);
-            continue;
-        }
-
-        memset(&ra, 0, sizeof(ra));
-        ra.packet = *pkt;
-        if (ioctl(fd, RASTERIZER_SUBMIT, &ra) == 0)
-            return 0;
-
-        if (errno == EAGAIN) {
-            stats->submit_eagain++;
-            continue;
-        }
-
-        return -1;
+    memset(&ra, 0, sizeof(ra));
+    ra.packet = *pkt;
+    while (ioctl(fd, RASTERIZER_SUBMIT, &ra) != 0) {
+        if (errno != EAGAIN) return -1;
+        stats->submit_eagain++;
     }
+    return 0;
 }
 
 static int wait_present(int fd, long *status_polls)

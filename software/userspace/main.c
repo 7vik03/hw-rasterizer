@@ -67,28 +67,12 @@
 static int submit_triangle(int fd, const triangle_packet_t *pkt)
 {
     rasterizer_arg_t ra;
-
-    for (;;) {
-        // poll until FIFO has space
-        memset(&ra, 0, sizeof(ra));
-        if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0) return -1;
-        if (ra.status.fifo_full) {
-            //usleep(100);
-            continue;
-        }
-
-        // attempt submit
-        memset(&ra, 0, sizeof(ra));
-        ra.packet = *pkt;
-        if (ioctl(fd, RASTERIZER_SUBMIT, &ra) == 0)
-            return 0;
-
-        // EAGAIN: race between poll and submit, go around again
-        if (errno == EAGAIN)
-            continue;
-
-        return -1;
+    memset(&ra, 0, sizeof(ra));
+    ra.packet = *pkt;
+    while (ioctl(fd, RASTERIZER_SUBMIT, &ra) != 0) {
+        if (errno != EAGAIN) return -1;
     }
+    return 0;
 }
 
 // ---- USB HID keyboard ----
@@ -152,7 +136,7 @@ static void poll_keys(void)
     int rc = libusb_interrupt_transfer(g_keyboard, g_endpoint,
                                        (unsigned char *)&g_pkt_cur,
                                        sizeof(g_pkt_cur),
-                                       &transferred, 5);
+                                       &transferred, 1);
     if (rc != 0 || transferred != (int)sizeof(g_pkt_cur))
         g_pkt_cur = g_pkt_prev;  // no new report: preserve last known state
 
