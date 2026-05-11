@@ -333,6 +333,8 @@ int main(int argc, char *argv[])
         MODEL_CUBE = 0,
         MODEL_SPHERE_LO,
         MODEL_SPHERE_MED,
+        MODEL_SPHERE_HI,
+        MODEL_SPHERE_ULTRA,
         MODEL_TORUS,
         MODEL_SATURN,
         MODEL_LEGO,
@@ -345,13 +347,15 @@ int main(int argc, char *argv[])
     };
 
     static model_t models[MODEL_COUNT];
-    int num_models = 7;
+    int num_models = 9;
     int obj1_loaded = 0, obj2_loaded = 0, obj3_loaded = 0;
     char obj1_path[128], obj2_path[128], obj3_path[128];
 
     model_make_cube(&models[MODEL_CUBE]);
-    model_make_icosphere(&models[MODEL_SPHERE_LO], 1);       // 80 faces
-    model_make_icosphere(&models[MODEL_SPHERE_MED], 2);      // 320 faces
+    model_make_icosphere(&models[MODEL_SPHERE_LO],    1);  //    80 faces
+    model_make_icosphere(&models[MODEL_SPHERE_MED],   2);  //   320 faces
+    model_make_icosphere(&models[MODEL_SPHERE_HI],    3);  // 1,280 faces
+    model_make_icosphere(&models[MODEL_SPHERE_ULTRA], 4);  // 5,120 faces
     model_make_torus(&models[MODEL_TORUS], 12, 8, 0.7f, 0.3f);
     model_make_saturn(&models[MODEL_SATURN]);                // ~368 faces
     model_make_lego(&models[MODEL_LEGO]);                    // ~204 faces
@@ -363,7 +367,7 @@ int main(int argc, char *argv[])
                    argv[1],
                    models[MODEL_ARGV_OBJ].num_verts,
                    models[MODEL_ARGV_OBJ].num_faces);
-            num_models = 8;
+            num_models = 10;
         } else {
             fprintf(stderr, "Warning: could not load %s\n", argv[1]);
         }
@@ -435,12 +439,14 @@ int main(int argc, char *argv[])
     printf("  a/d     - rotate left/right\n");
     printf("  +/-     - zoom in/out\n");
     printf("  1       - cube\n");
-    printf("  2       - sphere lo\n");
-    printf("  3       - sphere med\n");
-    printf("  4       - torus\n");
-    printf("  5       - saturn\n");
-    printf("  6       - lego brick\n");
-    printf("  7       - dna helix\n");
+    printf("  2       - sphere lo   (80 tris)\n");
+    printf("  3       - sphere med  (320 tris)\n");
+    printf("  4       - sphere hi   (1280 tris)\n");
+    printf("  5       - sphere max  (5120 tris)\n");
+    printf("  6       - torus\n");
+    printf("  7       - saturn\n");
+    printf("  8       - lego brick\n");
+    printf("  9       - dna helix\n");
     printf("  b       - obj1\n");
     printf("  m       - obj2\n");
     printf("  n       - obj3\n");
@@ -494,10 +500,12 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_1]) current_model = MODEL_CUBE;
         if (g_key_pressed[KEY_2]) current_model = MODEL_SPHERE_LO;
         if (g_key_pressed[KEY_3]) current_model = MODEL_SPHERE_MED;
-        if (g_key_pressed[KEY_4]) current_model = MODEL_TORUS;
-        if (g_key_pressed[KEY_5]) current_model = MODEL_SATURN;
-        if (g_key_pressed[KEY_6]) current_model = MODEL_LEGO;
-        if (g_key_pressed[KEY_7]) current_model = MODEL_DNA;
+        if (g_key_pressed[KEY_4]) current_model = MODEL_SPHERE_HI;
+        if (g_key_pressed[KEY_5]) current_model = MODEL_SPHERE_ULTRA;
+        if (g_key_pressed[KEY_6]) current_model = MODEL_TORUS;
+        if (g_key_pressed[KEY_7]) current_model = MODEL_SATURN;
+        if (g_key_pressed[KEY_8]) current_model = MODEL_LEGO;
+        if (g_key_pressed[KEY_9]) current_model = MODEL_DNA;
         if (g_key_pressed[KEY_B]) {
             if (obj1_loaded) current_model = MODEL_OBJ1;
             else fprintf(stderr, "\nobj1 not found. Place it at software/models/obj1.obj\n");
