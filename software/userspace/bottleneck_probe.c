@@ -37,6 +37,7 @@ typedef struct {
     int triangles_culled;
     long bbox_pixels;
     long bbox_cycles_est;
+    double project_sec;
     double setup_sec;
     double submit_sec;
     submit_stats_t submit;
@@ -73,8 +74,6 @@ static void project_vertices(const model_t *model, const mat4_t *mvp)
     }
 }
 
-#define STATUS_POLL_PERIOD 32
-
 static inline void mmio_barrier(void)
 {
 #if defined(__arm__) || defined(__aarch64__)
@@ -84,29 +83,34 @@ static inline void mmio_barrier(void)
 #endif
 }
 
+static uint32_t read_status_mmio(submit_stats_t *stats, long *status_polls)
+{
+    uint32_t status = g_regs[RAST_STATUS_OFFSET / 4];
+    unsigned int level = status & RAST_STATUS_LEVEL_MASK;
+
+    if (stats && level > stats->max_fifo_level)
+        stats->max_fifo_level = level;
+    if (stats)
+        stats->status_polls++;
+    if (status_polls)
+        (*status_polls)++;
+
+    return status;
+}
+
 static int submit_triangle(int fd, const triangle_packet_t *pkt,
                            submit_stats_t *stats)
 {
     if (g_regs) {
-        static unsigned int tri_counter = 0;
         const uint32_t *w = (const uint32_t *)pkt;
+        uint32_t status;
 
-        // Sample STATUS once every STATUS_POLL_PERIOD triangles. The
-        // 64-deep FIFO never fills for current workloads (fifo_max=0
-        // in probe runs), so per-triangle polling is pure bridge
-        // overhead. The periodic sample still feeds max_fifo_level
-        // and catches an unexpected stall.
-        if ((tri_counter++ & (STATUS_POLL_PERIOD - 1)) == 0) {
-            uint32_t status = g_regs[RAST_STATUS_OFFSET / 4];
-            stats->status_polls++;
-            unsigned int level = status & RAST_STATUS_LEVEL_MASK;
-            if (level > stats->max_fifo_level)
-                stats->max_fifo_level = level;
-            while (status & RAST_STATUS_FULL_BIT) {
-                stats->fifo_full_polls++;
-                status = g_regs[RAST_STATUS_OFFSET / 4];
-                stats->status_polls++;
-            }
+        // For probe correctness, check STATUS on every submission so a
+        // COMMIT can never be silently dropped if the FIFO fills.
+        status = read_status_mmio(stats, NULL);
+        while (status & RAST_STATUS_FULL_BIT) {
+            stats->fifo_full_polls++;
+            status = read_status_mmio(stats, NULL);
         }
 
         for (int i = 0; i < RAST_PACKET_NUM_WORDS; i++)
@@ -129,25 +133,49 @@ static int submit_triangle(int fd, const triangle_packet_t *pkt,
     return 0;
 }
 
+static int issue_present(int fd)
+{
+    if (g_regs) {
+        mmio_barrier();
+        g_regs[RAST_PRESENT_OFFSET / 4] = 1;
+        return 0;
+    }
+
+    return ioctl(fd, RASTERIZER_PRESENT);
+}
+
 static int wait_present(int fd, long *status_polls)
 {
     rasterizer_arg_t ra;
 
-    do {
-        memset(&ra, 0, sizeof(ra));
-        if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0)
-            return -1;
-        (*status_polls)++;
-    } while (!ra.status.swap_busy);
+    if (g_regs) {
+        uint32_t status;
 
-    for (;;) {
-        memset(&ra, 0, sizeof(ra));
-        if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0)
-            return -1;
-        (*status_polls)++;
-        if (!ra.status.swap_busy)
-            return 0;
-        //usleep(100);
+        do {
+            status = read_status_mmio(NULL, status_polls);
+        } while (!(status & RAST_STATUS_SWAP_BUSY_BIT));
+
+        for (;;) {
+            status = read_status_mmio(NULL, status_polls);
+            if (!(status & RAST_STATUS_SWAP_BUSY_BIT))
+                return 0;
+        }
+    } else {
+        do {
+            memset(&ra, 0, sizeof(ra));
+            if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0)
+                return -1;
+            (*status_polls)++;
+        } while (!ra.status.swap_busy);
+
+        for (;;) {
+            memset(&ra, 0, sizeof(ra));
+            if (ioctl(fd, RASTERIZER_STATUS, &ra) < 0)
+                return -1;
+            (*status_polls)++;
+            if (!ra.status.swap_busy)
+                return 0;
+        }
     }
 }
 
@@ -174,7 +202,10 @@ static int render_frame_profile(int fd, int dry_run, const model_t *model,
     memset(stats, 0, sizeof(*stats));
     stats->faces_total = model->num_faces;
 
+    clock_gettime(CLOCK_MONOTONIC, &t0);
     project_vertices(model, &mvp);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    stats->project_sec += elapsed_sec(t0, t1);
 
     for (int i = 0; i < model->num_faces; i++) {
         const face_t *f = &model->faces[i];
@@ -309,7 +340,7 @@ int main(int argc, char **argv)
         }
     }
 
-    printf("frame,model,faces,built,culled,render_ms,setup_ms,submit_ms,"
+    printf("frame,model,faces,built,culled,render_ms,project_ms,setup_ms,submit_ms,"
            "present_ms,fps,fifo_max,fifo_full_polls,eagain,status_polls,"
            "bbox_avg_px,hw_cycle_est\n");
 
@@ -336,7 +367,7 @@ int main(int argc, char **argv)
 
         if (!dry_run) {
             clock_gettime(CLOCK_MONOTONIC, &tp0);
-            if (ioctl(fd, RASTERIZER_PRESENT) < 0 ||
+            if (issue_present(fd) < 0 ||
                 wait_present(fd, &present_polls) < 0) {
                 fprintf(stderr, "present failed on frame %d: %s\n",
                         frame, strerror(errno));
@@ -348,6 +379,7 @@ int main(int argc, char **argv)
         }
 
         double render_ms = elapsed_sec(t0, t1) * 1000.0;
+        double project_ms = stats.project_sec * 1000.0;
         double setup_ms = stats.setup_sec * 1000.0;
         double submit_ms = stats.submit_sec * 1000.0;
         double fps = render_ms + present_ms > 0.0 ?
@@ -356,9 +388,9 @@ int main(int argc, char **argv)
                           (double)stats.bbox_pixels / stats.triangles_built :
                           0.0;
 
-        printf("%d,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.2f,%u,%ld,%ld,%ld,%.1f,%ld\n",
+        printf("%d,%s,%d,%d,%d,%.3f,%.3f,%.3f,%.3f,%.3f,%.2f,%u,%ld,%ld,%ld,%.1f,%ld\n",
                frame, model.name, stats.faces_total, stats.triangles_built,
-               stats.triangles_culled, render_ms, setup_ms, submit_ms,
+               stats.triangles_culled, render_ms, project_ms, setup_ms, submit_ms,
                present_ms, fps, stats.submit.max_fifo_level,
                stats.submit.fifo_full_polls, stats.submit.submit_eagain,
                stats.submit.status_polls + present_polls, bbox_avg,
