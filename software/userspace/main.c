@@ -348,6 +348,9 @@ int main(int argc, char *argv[])
         MODEL_ALMA_MATER,
         MODEL_ALMA_MATER_COMP,
         MODEL_LION,
+        MODEL_CROWN,
+        MODEL_CROWN_80K,
+        MODEL_CROWN_100K,
         MODEL_COUNT
     };
 
@@ -355,8 +358,10 @@ int main(int argc, char *argv[])
     int num_models = 10;
     int obj1_loaded = 0, obj2_loaded = 0, obj3_loaded = 0;
     int thinker_loaded = 0, alma_loaded = 0, alma_comp_loaded = 0, lion_loaded = 0;
+    int crown_loaded = 0, crown_80k_loaded = 0, crown_100k_loaded = 0;
     char obj1_path[128], obj2_path[128], obj3_path[128];
     char thinker_path[128], alma_path[128], alma_comp_path[128], lion_path[128];
+    char crown_path[128], crown_80k_path[128], crown_100k_path[128];
 
     model_make_cube(&models[MODEL_CUBE]);
     model_make_icosphere(&models[MODEL_SPHERE_LO],    1);  //     80 faces
@@ -438,8 +443,30 @@ int main(int argc, char *argv[])
         model_make_cube(&models[MODEL_LION]);
         strncpy(models[MODEL_LION].name, "lion_missing", sizeof(models[MODEL_LION].name) - 1);
     }
-
-    int fd = open(DEVICE, O_RDWR);
+    if (load_named_obj(&models[MODEL_CROWN], "ColumbiaCrown", crown_path, sizeof(crown_path)) == 0) {
+        crown_loaded = 1;
+        strncpy(models[MODEL_CROWN].name, "Crown", sizeof(models[MODEL_CROWN].name) - 1);
+        models[MODEL_CROWN].name[sizeof(models[MODEL_CROWN].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_CROWN]);
+        strncpy(models[MODEL_CROWN].name, "Crown_missing", sizeof(models[MODEL_CROWN].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_CROWN_80K], "ColumbiaCrown_80K", crown_80k_path, sizeof(crown_80k_path)) == 0) {
+        crown_80k_loaded = 1;
+        strncpy(models[MODEL_CROWN_80K].name, "Crown_80K", sizeof(models[MODEL_CROWN_80K].name) - 1);
+        models[MODEL_CROWN_80K].name[sizeof(models[MODEL_CROWN_80K].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_CROWN_80K]);
+        strncpy(models[MODEL_CROWN_80K].name, "Crown_80K_missing", sizeof(models[MODEL_CROWN_80K].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_CROWN_100K], "ColumbiaCrown_100K", crown_100k_path, sizeof(crown_100k_path)) == 0) {
+        crown_100k_loaded = 1;
+        strncpy(models[MODEL_CROWN_100K].name, "Crown_100K", sizeof(models[MODEL_CROWN_100K].name) - 1);
+        models[MODEL_CROWN_100K].name[sizeof(models[MODEL_CROWN_100K].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_CROWN_100K]);
+        strncpy(models[MODEL_CROWN_100K].name, "Crown_100K_missing", sizeof(models[MODEL_CROWN_100K].name) - 1);
+    }
     if (fd < 0) {
         fprintf(stderr, "Cannot open %s: %s\n", DEVICE, strerror(errno));
         fprintf(stderr, "Is the kernel module loaded? "
@@ -493,6 +520,9 @@ int main(int argc, char *argv[])
     printf("  f       - alma mater    (%s)\n", alma_loaded      ? alma_path       : "NOT FOUND");
     printf("  c       - alma (compressed) (%s)\n", alma_comp_loaded ? alma_comp_path : "NOT FOUND");
     printf("  l       - wooden lion   (%s)\n", lion_loaded      ? lion_path       : "NOT FOUND");
+    printf("  e       - Columbia Crown (%s)\n",      crown_loaded     ? crown_path      : "NOT FOUND");
+    printf("  g       - Crown 80K     (%s)\n",       crown_80k_loaded ? crown_80k_path  : "NOT FOUND");
+    printf("  h       - Crown 100K    (%s)\n",       crown_100k_loaded? crown_100k_path : "NOT FOUND");
     if (num_models > 10) printf("  (OBJ)   - %s\n", models[MODEL_ARGV_OBJ].name);
     printf("OBJ key mapping:\n");
     printf("  b -> obj1: %s\n", obj1_loaded ? obj1_path : "NOT FOUND");
@@ -577,6 +607,18 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_L]) {
             if (lion_loaded) current_model = MODEL_LION;
             else fprintf(stderr, "\nwooden_lion_sculpture_derivative.obj not found in software/models/\n");
+        }
+        if (g_key_pressed[KEY_E]) {
+            if (crown_loaded) current_model = MODEL_CROWN;
+            else fprintf(stderr, "\nColumbiaCrown.obj not found in software/models/\n");
+        }
+        if (g_key_pressed[KEY_G]) {
+            if (crown_80k_loaded) current_model = MODEL_CROWN_80K;
+            else fprintf(stderr, "\nColumbiaCrown_80K.obj not found in software/models/\n");
+        }
+        if (g_key_pressed[KEY_H]) {
+            if (crown_100k_loaded) current_model = MODEL_CROWN_100K;
+            else fprintf(stderr, "\nColumbiaCrown_100K.obj not found in software/models/\n");
         }
         if (g_key_pressed[KEY_R]) {
             rot_x = 25.0f; rot_y = 45.0f; rot_z = 0.0f; cam_dist = 4.0f;
