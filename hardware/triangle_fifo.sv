@@ -11,8 +11,7 @@ module triangle_fifo #(parameter int DEPTH = 64) (
     output triangle_packet_t pop_data,
 
     output logic full, empty,
-    // 6 bits matches Shlok's avalon_interface status register;
-    // wraps to 0 at DEPTH=64, so consumers use `full` to disambiguate
+    // 6 bits matches Shlok's avalon_interface stat register;
     output logic [5:0] level
 );
     localparam int ADDR_W =$clog2(DEPTH);
@@ -45,7 +44,6 @@ module triangle_fifo #(parameter int DEPTH = 64) (
                     count<= count - 1'b1;
                 end
                 2'b11: begin
-                    // simultaneous push+pop keeps count stable
                     mem[wr_ptr]<= push_data;
                     wr_ptr <= wr_ptr + 1'b1;
                     rd_ptr <= rd_ptr + 1'b1;
