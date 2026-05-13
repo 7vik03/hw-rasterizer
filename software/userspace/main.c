@@ -344,13 +344,19 @@ int main(int argc, char *argv[])
         MODEL_OBJ1,
         MODEL_OBJ2,
         MODEL_OBJ3,
+        MODEL_THINKER,
+        MODEL_ALMA_MATER,
+        MODEL_ALMA_MATER_COMP,
+        MODEL_LION,
         MODEL_COUNT
     };
 
     static model_t models[MODEL_COUNT];
     int num_models = 10;
     int obj1_loaded = 0, obj2_loaded = 0, obj3_loaded = 0;
+    int thinker_loaded = 0, alma_loaded = 0, alma_comp_loaded = 0, lion_loaded = 0;
     char obj1_path[128], obj2_path[128], obj3_path[128];
+    char thinker_path[128], alma_path[128], alma_comp_path[128], lion_path[128];
 
     model_make_cube(&models[MODEL_CUBE]);
     model_make_icosphere(&models[MODEL_SPHERE_LO],    1);  //     80 faces
@@ -400,8 +406,38 @@ int main(int argc, char *argv[])
         model_make_cube(&models[MODEL_OBJ3]);
         strncpy(models[MODEL_OBJ3].name, "obj3_missing", sizeof(models[MODEL_OBJ3].name) - 1);
     }
-
-    // ---- open rasterizer device ----
+    if (load_named_obj(&models[MODEL_THINKER], "Thinker", thinker_path, sizeof(thinker_path)) == 0) {
+        thinker_loaded = 1;
+        strncpy(models[MODEL_THINKER].name, "Thinker", sizeof(models[MODEL_THINKER].name) - 1);
+        models[MODEL_THINKER].name[sizeof(models[MODEL_THINKER].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_THINKER]);
+        strncpy(models[MODEL_THINKER].name, "Thinker_missing", sizeof(models[MODEL_THINKER].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_ALMA_MATER], "alma_mater", alma_path, sizeof(alma_path)) == 0) {
+        alma_loaded = 1;
+        strncpy(models[MODEL_ALMA_MATER].name, "alma_mater", sizeof(models[MODEL_ALMA_MATER].name) - 1);
+        models[MODEL_ALMA_MATER].name[sizeof(models[MODEL_ALMA_MATER].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_ALMA_MATER]);
+        strncpy(models[MODEL_ALMA_MATER].name, "alma_mater_missing", sizeof(models[MODEL_ALMA_MATER].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_ALMA_MATER_COMP], "alma_mater_compressed", alma_comp_path, sizeof(alma_comp_path)) == 0) {
+        alma_comp_loaded = 1;
+        strncpy(models[MODEL_ALMA_MATER_COMP].name, "alma_mater_comp", sizeof(models[MODEL_ALMA_MATER_COMP].name) - 1);
+        models[MODEL_ALMA_MATER_COMP].name[sizeof(models[MODEL_ALMA_MATER_COMP].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_ALMA_MATER_COMP]);
+        strncpy(models[MODEL_ALMA_MATER_COMP].name, "alma_comp_missing", sizeof(models[MODEL_ALMA_MATER_COMP].name) - 1);
+    }
+    if (load_named_obj(&models[MODEL_LION], "wooden_lion_sculpture_derivative", lion_path, sizeof(lion_path)) == 0) {
+        lion_loaded = 1;
+        strncpy(models[MODEL_LION].name, "lion", sizeof(models[MODEL_LION].name) - 1);
+        models[MODEL_LION].name[sizeof(models[MODEL_LION].name) - 1] = '\0';
+    } else {
+        model_make_cube(&models[MODEL_LION]);
+        strncpy(models[MODEL_LION].name, "lion_missing", sizeof(models[MODEL_LION].name) - 1);
+    }
 
     int fd = open(DEVICE, O_RDWR);
     if (fd < 0) {
@@ -453,6 +489,10 @@ int main(int argc, char *argv[])
     printf("  b       - obj1\n");
     printf("  m       - obj2\n");
     printf("  n       - obj3\n");
+    printf("  t       - Thinker       (%s)\n", thinker_loaded  ? thinker_path   : "NOT FOUND");
+    printf("  f       - alma mater    (%s)\n", alma_loaded      ? alma_path       : "NOT FOUND");
+    printf("  c       - alma (compressed) (%s)\n", alma_comp_loaded ? alma_comp_path : "NOT FOUND");
+    printf("  l       - wooden lion   (%s)\n", lion_loaded      ? lion_path       : "NOT FOUND");
     if (num_models > 10) printf("  (OBJ)   - %s\n", models[MODEL_ARGV_OBJ].name);
     printf("OBJ key mapping:\n");
     printf("  b -> obj1: %s\n", obj1_loaded ? obj1_path : "NOT FOUND");
@@ -521,6 +561,22 @@ int main(int argc, char *argv[])
         if (g_key_pressed[KEY_N]) {
             if (obj3_loaded) current_model = MODEL_OBJ3;
             else fprintf(stderr, "\nobj3 not found. Place it at software/models/obj3.obj\n");
+        }
+        if (g_key_pressed[KEY_T]) {
+            if (thinker_loaded) current_model = MODEL_THINKER;
+            else fprintf(stderr, "\nThinker.obj not found in software/models/\n");
+        }
+        if (g_key_pressed[KEY_F]) {
+            if (alma_loaded) current_model = MODEL_ALMA_MATER;
+            else fprintf(stderr, "\nalma_mater.obj not found in software/models/\n");
+        }
+        if (g_key_pressed[KEY_C]) {
+            if (alma_comp_loaded) current_model = MODEL_ALMA_MATER_COMP;
+            else fprintf(stderr, "\nalma_mater_compressed.obj not found in software/models/\n");
+        }
+        if (g_key_pressed[KEY_L]) {
+            if (lion_loaded) current_model = MODEL_LION;
+            else fprintf(stderr, "\nwooden_lion_sculpture_derivative.obj not found in software/models/\n");
         }
         if (g_key_pressed[KEY_R]) {
             rot_x = 25.0f; rot_y = 45.0f; rot_z = 0.0f; cam_dist = 4.0f;
