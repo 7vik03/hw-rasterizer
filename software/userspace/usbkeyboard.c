@@ -1,13 +1,11 @@
+// usbkeyboard.c
+
 #include "usbkeyboard.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-/*
- * Find and return a USB keyboard device, or NULL if not found.
- * Sets *endpoint_address to the interrupt endpoint of the keyboard.
- * Taken directly from lab2 usbkeyboard.c.
- */
+
 struct libusb_device_handle *openkeyboard(uint8_t *endpoint_address)
 {
     libusb_device **devs;

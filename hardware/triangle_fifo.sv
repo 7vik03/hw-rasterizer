@@ -1,8 +1,7 @@
+// triangle_fifo.sv
+
 `include "triangle_packet.svh"
 
-// single-clock FIFO of triangle packets.
-// array-backed so Quartus infers M10K; no show-ahead tricks, head is
-// always visible combinationally via mem[rd_ptr].
 
 module triangle_fifo #(parameter int DEPTH = 64) (
     input logic clk, rst, push,
@@ -11,7 +10,7 @@ module triangle_fifo #(parameter int DEPTH = 64) (
     output triangle_packet_t pop_data,
 
     output logic full, empty,
-    // 6 bits matches Shlok's avalon_interface stat register;
+
     output logic [5:0] level
 );
     localparam int ADDR_W =$clog2(DEPTH);
@@ -20,7 +19,7 @@ module triangle_fifo #(parameter int DEPTH = 64) (
 
     logic [ADDR_W-1:0] wr_ptr, rd_ptr;
     logic [CNT_W-1:0] count;
-    
+
     assign empty = (count == '0);
     assign full =(count == DEPTH[CNT_W-1:0]);
     assign level = count[5:0];
@@ -31,7 +30,7 @@ module triangle_fifo #(parameter int DEPTH = 64) (
             wr_ptr<= '0;
             rd_ptr<= '0;
             count<= '0;
-        end 
+        end
         else begin
             unique case ({push && !full, pop && !empty})
                 2'b10: begin
@@ -51,7 +50,7 @@ module triangle_fifo #(parameter int DEPTH = 64) (
                 2'b00: begin
                 end
         endcase
-            
+
         end
     end
 endmodule

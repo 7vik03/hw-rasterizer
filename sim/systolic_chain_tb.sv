@@ -1,17 +1,4 @@
 // systolic_chain_tb.sv
-// Verifies the systolic seed handoff and steady-state pixel emission of a
-// short 4-PU chain (a downscaled stand-in for the full 16-PU design).
-//
-// Coverage:
-//   - Seed propagates from PU0 through PU3 with 1-cycle stagger.
-//   - Each PU emits N_COLS_PER_PU * N_ROWS pixels (multi-column iteration).
-//     With bbox_xmin=0 and bbox_xmax=35 every PU walks 3 columns at stride
-//     16, so we exercise both the systolic seed path AND the in-PU column
-//     jump.
-//   - Once the chain is full, all 4 PUs write in the same cycle on a
-//     diagonal: in the cycle where PU(N-1) emits row 0 of its first
-//     column, PU(N-2) is on row 1, ..., PU0 is on row N-1.
-//   - PU3 (IS_LAST_PU) never asserts seed_valid_out.
 
 `timescale 1ns/1ps
 `include "triangle_packet.svh"
@@ -19,15 +6,15 @@
 module systolic_chain_tb;
 
     localparam int N_PU            = 4;
-    localparam int N_ROWS          = 5;     // rows per column
-    localparam int N_COLS_PER_PU   = 3;     // 3 stride-16 columns per PU
-    localparam int LAST_COL        = 35;    // bbox_xmax: 0..35 covers 3 cols/PU
+    localparam int N_ROWS          = 5;
+    localparam int N_COLS_PER_PU   = 3;
+    localparam int LAST_COL        = 35;
     localparam int FB_DEPTH        = 4096;
     localparam int Z_DEPTH         = 4096;
 
     logic clk, rst;
 
-    // ---------------- chain wiring ----------------
+
     logic               chain_seed_valid [N_PU];
     logic signed [31:0] chain_seed_e0    [N_PU];
     logic signed [31:0] chain_seed_e1    [N_PU];
@@ -40,13 +27,13 @@ module systolic_chain_tb;
     logic signed [31:0] se2_out [N_PU];
     logic signed [31:0] sz_out  [N_PU];
 
-    // ---------------- broadcast constants (driven by TB) ----------------
+
     logic signed [31:0] a0_b, a1_b, a2_b, z_step_x_b;
     logic signed [31:0] b0_b, b1_b, b2_b, z_step_y_b;
     logic [7:0]         color_b, row_base_b, last_row_b, last_col_b;
     logic [7:0]         col_base_for_pu [N_PU];
 
-    // ---------------- TB-driven seed for PU0 ----------------
+
     logic               tb_seed_valid;
     logic signed [31:0] tb_seed_e0, tb_seed_e1, tb_seed_e2, tb_seed_z;
 
@@ -56,7 +43,7 @@ module systolic_chain_tb;
     assign chain_seed_e2[0]    = tb_seed_e2;
     assign chain_seed_z[0]     = tb_seed_z;
 
-    // ---------------- per-PU monitoring ----------------
+
     logic [N_PU-1:0] pu_ready;
     logic [N_PU-1:0] p_write;
     logic [7:0]      p_col   [N_PU];
@@ -64,7 +51,7 @@ module systolic_chain_tb;
     logic [7:0]      p_color [N_PU];
     logic [15:0]     p_depth [N_PU];
 
-    // VGA tie-offs (not exercised in this TB)
+
     logic [11:0] vga_r_addr;
     logic        vga_r_buf_sel, fb_write_sel;
     assign vga_r_addr     = '0;
@@ -74,7 +61,7 @@ module systolic_chain_tb;
     genvar gi;
     generate
         for (gi = 0; gi < N_PU; gi++) begin : g_pu
-            // bbox_xmin = 0 (aligned), so col_base = pu_id matches mem bank
+
             assign col_base_for_pu[gi] = 8'(gi);
 
             pixel_unit #(
@@ -82,7 +69,7 @@ module systolic_chain_tb;
                 .IS_LAST_PU ((gi == N_PU - 1) ? 1'b1 : 1'b0),
                 .FB_DEPTH   (FB_DEPTH),
                 .Z_DEPTH    (Z_DEPTH),
-                // chain tb seeds z_mem itself via z_clear_all_pus_to_far()
+
                 .DO_INIT_CLEAR(1'b0)
             ) u_pu (
                 .clk            (clk),
@@ -133,7 +120,7 @@ module systolic_chain_tb;
         end
     endgenerate
 
-    // 100 MHz
+
     initial clk = 0;
     always #5 clk = ~clk;
 
@@ -145,7 +132,7 @@ module systolic_chain_tb;
         end
     endtask
 
-    // ---------------- collectors ----------------
+
     int cycle_num;
     int pix_count       [N_PU];
     int pu_first_cycle  [N_PU];
@@ -176,10 +163,7 @@ module systolic_chain_tb;
         end
     end
 
-    // diagonal-pattern witness: the first cycle PU(N_PU-1) writes is the
-    // cycle the chain is fully filled. At that moment we expect every PU
-    // to be writing, with rows forming a diagonal (PU0=N_PU-1, PU1=N_PU-2,
-    // ..., PU(N-1)=0).
+
     bit diagonal_checked;
     initial diagonal_checked = 1'b0;
 
@@ -199,14 +183,13 @@ module systolic_chain_tb;
         end
     end
 
-    // PU3 must never forward a seed (IS_LAST_PU = 1)
+
     always @(posedge clk) begin
         if (!rst && sv_out[N_PU - 1])
             $error("FAIL: PU(N-1) asserted seed_valid_out (IS_LAST_PU broken)");
     end
 
-    // unroll the z-init across the 4 generate-block instances; runtime
-    // indexing into generate arrays isn't portable across all simulators
+
     task automatic z_clear_all_pus_to_far();
         for (int i = 0; i < Z_DEPTH; i++) begin
             g_pu[0].u_pu.z_mem[i] = 16'hFFFF;
@@ -245,9 +228,7 @@ module systolic_chain_tb;
 
         z_clear_all_pus_to_far();
 
-        // ---- set broadcast constants ----
-        // a values nonzero so we can verify e propagates with +a along chain.
-        // b = 0 keeps every cycle inside the triangle (constant-positive edges).
+
         a0_b       <= 32'sd1;
         a1_b       <= 32'sd1;
         a2_b       <= 32'sd1;
@@ -259,7 +240,7 @@ module systolic_chain_tb;
         color_b    <= 8'h7E;
         row_base_b <= 8'd0;
         last_row_b <= 8'(N_ROWS - 1);
-        last_col_b <= 8'(LAST_COL);    // every PU walks 3 stride-16 columns
+        last_col_b <= 8'(LAST_COL);
 
         tb_seed_e0 <= 32'sd100;
         tb_seed_e1 <= 32'sd200;
@@ -267,14 +248,12 @@ module systolic_chain_tb;
         tb_seed_z  <= 32'sh0040;
         @(posedge clk);
 
-        // ---- pulse seed for one cycle ----
+
         tb_seed_valid <= 1'b1;
         @(posedge clk);
         tb_seed_valid <= 1'b0;
 
-        // ---- wait for the chain to drain ----
-        // worst case: fill (N_PU) + N_COLS_PER_PU * N_ROWS active cycles +
-        // a few cycles of read-pipeline tail.
+
         repeat (N_PU + N_COLS_PER_PU * N_ROWS + 16) @(posedge clk);
 
         for (int u = 0; u < N_PU; u++) begin
@@ -285,7 +264,7 @@ module systolic_chain_tb;
                   $sformatf("PU%0d not back to ready after drain", u));
         end
 
-        // 1-cycle stagger: PU(i+1)'s first emit is exactly one cycle after PU i's
+
         for (int u = 1; u < N_PU; u++) begin
             check(pu_first_cycle[u] - pu_first_cycle[u-1] == 1,
                   $sformatf("stagger PU%0d-PU%0d: first cycles %0d, %0d",

@@ -1,22 +1,7 @@
+// triangle_dispatcher.sv
+
 `include "triangle_packet.svh"
 
-// Pops one triangle packet from the FIFO and broadcasts it to N_PU pixel
-// units. Only issues a new packet when *every* pixel unit reports ready,
-// so the whole systolic chain has fully drained before the next triangle
-// arrives. The broadcast `packet_out` stays latched between dispatches,
-// so each PU still sees the right constants when its own seed_valid_in
-// fires (the chain may not finish latching for ~2*N_PU cycles after
-// seed_valid_out[0] pulses).
-//
-// fifo side uses Shlok's 2-cycle handshake:
-//   pop asserted while downstream is ready -> wait for pop_available ->
-//   latch pop_data -> pulse pop_ACK the cycle after.
-//
-// In the systolic 16-PU layout only valid_out[0] is consumed (it drives
-// PU0's seed_valid_in; the chain forwards from there). The vector form
-// is preserved so older 2-PU testbenches still compile, and so the
-// dispatcher itself is oblivious to whether downstream is broadcast or
-// systolic.
 
 module triangle_dispatcher #( parameter int N_PU = 16) (
     input logic clk, rst,
@@ -55,8 +40,8 @@ module triangle_dispatcher #( parameter int N_PU = 16) (
             case (state)
                 WAIT: begin
                     if (all_ready && !block_dispatch) pop <= 1'b1;
-                    
-                    if (pop && pop_available && !block_dispatch) 
+
+                    if (pop && pop_available && !block_dispatch)
                         begin
                         latched <= pop_data;
                         state <= BCAST;
@@ -70,7 +55,7 @@ module triangle_dispatcher #( parameter int N_PU = 16) (
                 COOLDOWN: begin
                     state<= WAIT;
                 end
-                
+
                 default: state <= WAIT;
             endcase
         end

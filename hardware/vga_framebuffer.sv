@@ -1,3 +1,5 @@
+// vga_framebuffer.sv
+
 module vga_framebuffer (
     input logic clk, reset,
     input logic [7:0] pu_vga_data [0:15],
@@ -10,8 +12,8 @@ module vga_framebuffer (
 
     logic [10:0] hcount;
     logic [9:0] vcount;
-    
-    vga_counters counters (.clk50(clk), .reset(reset), .hcount(hcount), .vcount(vcount), .frame_done(frame_done), .VGA_CLK(VGA_CLK), 
+
+    vga_counters counters (.clk50(clk), .reset(reset), .hcount(hcount), .vcount(vcount), .frame_done(frame_done), .VGA_CLK(VGA_CLK),
                            .VGA_HS(VGA_HS), .VGA_VS(VGA_VS), .VGA_BLANK_n(VGA_BLANK_n), .VGA_SYNC_n(VGA_SYNC_n));
 
     logic [10:0] fb_x_tmp;
@@ -28,8 +30,8 @@ module vga_framebuffer (
 
     assign fb_y = vcount[8:1];
     assign vga_r_addr = {fb_x[7:4], fb_y};
-    
-//vga will read front buffer rast writes back
+
+
     assign vga_r_buf_sel = ~fb_write_sel;
 
     logic [3:0] pu_sel_q;
@@ -39,10 +41,10 @@ module vga_framebuffer (
         if (reset) begin
             pu_sel_q <= 4'd0;
             in_fb_region_q <= 1'b0;
-        end 
+        end
         else begin
 
-            //bram latency need to delay selector
+
         pu_sel_q <= fb_x[3:0];
         in_fb_region_q<= in_fb_region;
         end
@@ -80,7 +82,7 @@ module vga_counters (
             hcount <= 11'd0;
             vcount <= 10'd0;
             frame_done <= 1'b0;
-        end 
+        end
         else begin
             pixel_tick <= ~pixel_tick;
             frame_done <= 1'b0;
@@ -92,12 +94,12 @@ module vga_counters (
                     if (vcount == 10'd524) begin
                         vcount <= 10'd0;
                         frame_done <= 1'b1;
-                    end 
-                    
+                    end
+
                     else begin
                         vcount <= vcount + 10'd1;
                     end
-                end 
+                end
                 else begin
                     hcount <= hcount + 11'd1;
                 end

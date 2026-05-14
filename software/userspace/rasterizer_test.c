@@ -1,19 +1,4 @@
-/*
- * rasterizer_test.c
- *
- * Minimal userspace validator for the rasterizer kernel driver.
- * Exercises every ioctl path so we can confirm the driver loads,
- * /dev/rasterizer is reachable, and copy_from/to_user works.
- *
- * NOTE: Without a real Avalon slave on the FPGA, the data values
- * read back from STATUS will be garbage (whatever the bus returns
- * for an unmapped or unconnected region — typically 0x0 or 0xFFFFFFFF).
- * That's fine — what we are validating here is the driver plumbing,
- * not the hardware behavior.
- *
- * Build:  gcc -Wall -o rasterizer_test rasterizer_test.c
- * Run:    sudo ./rasterizer_test
- */
+// rasterizer_test.c
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +18,7 @@ int main(void)
 
     printf("=== rasterizer driver validation ===\n\n");
 
-    /* ----- Test 1: open /dev/rasterizer ----- */
+
     printf("[1] opening /dev/rasterizer ... ");
     fd = open("/dev/rasterizer", O_RDWR);
     if (fd < 0) {
@@ -45,7 +30,7 @@ int main(void)
     }
     printf("OK (fd=%d)\n", fd);
 
-    /* ----- Test 2: read STATUS ----- */
+
     printf("[2] ioctl(RASTERIZER_STATUS) ... ");
     memset(&ra, 0, sizeof(ra));
     ret = ioctl(fd, RASTERIZER_STATUS, &ra);
@@ -58,7 +43,7 @@ int main(void)
         printf("    (values are bus garbage if no SV slave is connected)\n");
     }
 
-    /* ----- Test 3: write CONTROL ----- */
+
     printf("[3] ioctl(RASTERIZER_SET_CONTROL) ... ");
     memset(&ra, 0, sizeof(ra));
     ra.control.irq_enable    = 0;
@@ -69,7 +54,7 @@ int main(void)
     else
         printf("OK (wrote irq_enable=0, low_watermark=16)\n");
 
-    /* ----- Test 4: read CONTROL back from shadow ----- */
+
     printf("[4] ioctl(RASTERIZER_GET_CONTROL) ... ");
     memset(&ra, 0, sizeof(ra));
     ret = ioctl(fd, RASTERIZER_GET_CONTROL, &ra);
@@ -85,13 +70,13 @@ int main(void)
             printf("    FAIL: shadow read did not match\n");
     }
 
-    /* ----- Test 5: submit a fake triangle ----- */
+
     printf("[5] ioctl(RASTERIZER_SUBMIT) ... ");
     memset(&ra, 0, sizeof(ra));
     ra.packet.a0          = 0x11111111;
     ra.packet.b0          = 0x22222222;
     ra.packet.c0          = 0x33333333;
-    ra.packet.flags_color = 0x000001E0;  /* front-facing red */
+    ra.packet.flags_color = 0x000001E0;
     ret = ioctl(fd, RASTERIZER_SUBMIT, &ra);
     if (ret != 0) {
         if (errno == EAGAIN)
@@ -102,7 +87,7 @@ int main(void)
         printf("OK (17 iowrite32s + 1 commit issued to bus)\n");
     }
 
-    /* ----- Test 6: bad ioctl number ----- */
+
     printf("[6] ioctl(0xDEADBEEF) ... ");
     ret = ioctl(fd, 0xDEADBEEF, &ra);
     if (ret == 0)

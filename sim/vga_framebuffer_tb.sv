@@ -1,3 +1,5 @@
+// vga_framebuffer_tb.sv
+
 `timescale 1ns/1ps
 
 module vga_framebuffer_tb;
@@ -36,7 +38,7 @@ module vga_framebuffer_tb;
         .VGA_SYNC_n(VGA_SYNC_n)
     );
 
-    // 50 MHz clock
+
     initial clk = 1'b0;
     always #10 clk = ~clk;
 
@@ -59,7 +61,7 @@ module vga_framebuffer_tb;
 
     task automatic drive_pu_pattern();
         for (int i = 0; i < 16; i++) begin
-            // unique fake color per PU
+
             pu_vga_data[i] = {i[3:0], i[3:0]};
         end
     endtask
@@ -81,15 +83,14 @@ module vga_framebuffer_tb;
         logic [23:0] expected_rgb;
 
         begin
-            // Internal 256x240 image is centered:
-            // screen_x = 64 + 2*fb_x
+
+
             screen_x = 64 + (2 * fb_x);
 
-            // New vga_counters use hcount = 0..799 directly,
-            // not doubled 0..1599.
+
             h_target = screen_x;
 
-            // Vertical is still 2x scale: fb_y = vcount[9:1]
+
             v_target = 2 * fb_y;
 
             wait_hv(h_target, v_target);
@@ -103,7 +104,7 @@ module vga_framebuffer_tb;
                   $sformatf("addr fb_x=%0d fb_y=%0d got=%h expected=%h",
                             fb_x, fb_y, vga_r_addr, expected_addr));
 
-            // one cycle later, delayed PU select should choose correct color
+
             @(posedge clk);
             #1;
 

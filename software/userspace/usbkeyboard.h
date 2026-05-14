@@ -1,3 +1,5 @@
+// usbkeyboard.h
+
 #ifndef _USBKEYBOARD_H
 #define _USBKEYBOARD_H
 
@@ -5,7 +7,7 @@
 
 #define USB_HID_KEYBOARD_PROTOCOL 1
 
-/* Modifier bits */
+
 #define USB_LCTRL  (1 << 0)
 #define USB_LSHIFT (1 << 1)
 #define USB_LALT   (1 << 2)
@@ -21,7 +23,7 @@ struct usb_keyboard_packet {
     uint8_t keycode[6];
 };
 
-/* HID scan codes used by the demo */
+
 #define KEY_A      0x04
 #define KEY_B      0x05
 #define KEY_C      0x06
@@ -73,8 +75,7 @@ struct usb_keyboard_packet {
 #define KEY_LEFT  0x50
 #define KEY_RIGHT 0x4f
 
-/* Find and open a USB keyboard. Argument receives the endpoint address.
-   Returns NULL if no keyboard found. */
+
 extern struct libusb_device_handle *openkeyboard(uint8_t *endpoint_address);
 
-#endif /* _USBKEYBOARD_H */
+#endif

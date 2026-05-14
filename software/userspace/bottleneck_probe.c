@@ -1,7 +1,4 @@
 // bottleneck_probe.c
-//
-// Standalone timing probe for the hardware rasterizer path. This is kept
-// separate from main.c so the interactive demo stays untouched.
 
 #include <errno.h>
 #include <fcntl.h>
@@ -105,8 +102,7 @@ static int submit_triangle(int fd, const triangle_packet_t *pkt,
         const uint32_t *w = (const uint32_t *)pkt;
         uint32_t status;
 
-        // For probe correctness, check STATUS on every submission so a
-        // COMMIT can never be silently dropped if the FIFO fills.
+
         status = read_status_mmio(stats, NULL);
         while (status & RAST_STATUS_FULL_BIT) {
             stats->fifo_full_polls++;
@@ -116,8 +112,7 @@ static int submit_triangle(int fd, const triangle_packet_t *pkt,
         for (int i = 0; i < RAST_PACKET_NUM_WORDS; i++)
             g_regs[i] = w[i];
 
-        // Drain write-combine buffer before strobing COMMIT so the
-        // FPGA latches the full packet, not a partial one.
+
         mmio_barrier();
         g_regs[RAST_COMMIT_OFFSET / 4] = 1;
         return 0;

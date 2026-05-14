@@ -1,22 +1,4 @@
 // geometry.c
-//
-// ARM-side 3D pipeline: matrix math, lighting, and triangle setup.
-//
-// Everything in this file runs on the HPS (ARM) before each frame.
-// All arithmetic is floating-point.  The output of setup_triangle()
-// is a triangle_packet_t in Q12.12 fixed-point that the kernel driver
-// writes word-by-word to the Avalon-MM slave.
-//
-// Hardware invariants enforced here:
-//   - bbox_xmin is snapped down to the nearest multiple of 16 so each
-//     of the 16 pixel units owns a clean column bank.  PU_ID owns
-//     columns { PU_ID, PU_ID+16, PU_ID+32, ... }.
-//   - Edge initial values (e0/e1/e2_init) are evaluated at pixel centre
-//     (bbox_xmin + 0.5, bbox_ymin + 0.5), matching what the hardware
-//     expects at stage[9..11].
-//   - Depth is scaled to [0, 65535] and stored Q12.12.
-//   - Back-facing triangles (signed area <= 0) are culled here;
-//     setup_triangle() returns -1 so the caller skips the ioctl.
 
 #include "geometry.h"
 
@@ -24,15 +6,13 @@
 #include <stddef.h>
 #include <string.h>
 
-// ---- screen constants -- must match hardware spec ----
 
 #define SCREEN_W   256
 #define SCREEN_H   240
 #define FRAC_BITS  12
-#define FIXED_ONE  (1 << FRAC_BITS)   // 4096
+#define FIXED_ONE  (1 << FRAC_BITS)
 #define DEPTH_MAX  65535
 
-// ---- vec3 helpers ----
 
 vec3_t vec3_sub(vec3_t a, vec3_t b)
 {
@@ -60,7 +40,6 @@ vec3_t vec3_normalize(vec3_t v)
     return (vec3_t){ v.x/l, v.y/l, v.z/l };
 }
 
-// ---- mat4 ----
 
 mat4_t mat4_identity(void)
 {
@@ -91,7 +70,6 @@ vec4_t mat4_mul_vec4(const mat4_t *m, vec4_t v)
     };
 }
 
-// ---- transform constructors ----
 
 mat4_t rotation_x(float deg)
 {
@@ -140,11 +118,6 @@ mat4_t perspective(float fov_deg, float aspect, float near, float far)
     return m;
 }
 
-// ---- lighting ----
-//
-// Flat Phong shading: N dot L with a 0.25 ambient floor, clamped to
-// [0,1] and scaled by 1.2 to boost mid-tones.  Result quantised to
-// RGB332 (3R 3G 2B) matching the hardware framebuffer format exactly.
 
 static uint8_t float_to_rgb332(float r, float g, float b)
 {
@@ -170,33 +143,12 @@ uint8_t shade_face(vec3_t normal, vec3_t light_dir,
                            base_b * intensity);
 }
 
-// ---- fixed-point conversion ----
-//
-// Rounds to nearest Q12.12: multiply by 4096, round half-up in magnitude.
 
 static int32_t to_fixed(float v)
 {
     return (int32_t)(v * FIXED_ONE + (v >= 0.0f ? 0.5f : -0.5f));
 }
 
-// ---- triangle setup -> triangle_packet_t ----
-//
-// Computes Pineda edge coefficients and depth interpolation for one
-// triangle, then packs the result into the 17-word layout that
-// avalon_interface.sv expects in its staging registers.
-//
-// Word layout (matches avalon_interface.sv stage[0..16]):
-//   [0]  a0   [1]  b0   [2]  c0  (c0 accepted by HW but not used)
-//   [3]  a1   [4]  b1   [5]  c1
-//   [6]  a2   [7]  b2   [8]  c2
-//   [9]  e0_init  [10] e1_init  [11] e2_init
-//   [12] z_origin [13] z_step_x [14] z_step_y
-//   [15] bbox_packed  { ymax[31:24] ymin[23:16] xmax[15:8] xmin[7:0] }
-//   [16] flags_color  { ..., front_facing[8], color[7:0] }
-//
-// bbox_xmin is snapped to a multiple of 16 before computing e?_init.
-// Returns 0 on success, -1 if the triangle is back-facing, degenerate,
-// or entirely outside the screen.
 
 int setup_triangle(const screen_vertex_t *v0, const screen_vertex_t *v1,
                    const screen_vertex_t *v2, uint8_t color,
@@ -213,10 +165,10 @@ int setup_triangle(const screen_vertex_t *v0, const screen_vertex_t *v1,
 
     float area = a0f * v0->sx + b0f * v0->sy + c0f;
 
-    // Reject only truly degenerate triangles.
+
     if (fabsf(area) <= 1e-6f) return -1;
 
-    // Normalize winding so hardware can always use inside test e0/e1/e2 >= 0.
+
     if (area < 0.0f) {
         area = -area;
 
@@ -257,7 +209,7 @@ int setup_triangle(const screen_vertex_t *v0, const screen_vertex_t *v1,
 
     float z_step_xf = (a0f * zs0 + a1f * zs1 + a2f * zs2) / area;
     float z_step_yf = (b0f * zs0 + b1f * zs1 + b2f * zs2) / area;
-    // IMPORTANT: e*_initf are floats, not fixed-point. Do not divide by FIXED_ONE.
+
     float z_at_originf = (e0_initf * zs0 +
                           e1_initf * zs1 +
                           e2_initf * zs2) / area;

@@ -1,3 +1,5 @@
+// avalon_kernel.c
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/errno.h>
@@ -16,39 +18,36 @@
 
 #define DRIVER_NAME "rasterizer"
 
-// this is the struct that will get the virtual address of the slave's register region and a shadow of the control register
-//?the shadow control reg is the same as it was for the vga_ball lab(i guess we used it for color)
+
 struct rasterizer_dev {
-    struct resource         res;        /* physical address region from DT  */
-    void __iomem           *virtbase;   /* kernel VA for MMIO access        */
-    rasterizer_control_t    control;    /* shadow of CONTROL register       */
+    struct resource         res;
+    void __iomem           *virtbase;
+    rasterizer_control_t    control;
 } dev;
 
 static void writeTrianglePacket(const triangle_packet_t *pkt)
 {
 
-    const __u32 *words = (const __u32 *)pkt;//cast to uint32_pointer to use in the iowrite32 function
+    const __u32 *words = (const __u32 *)pkt;
     int i;
 
-    //send the 17 words of the triangle packet to the hardware using iowrite32
+
     for (i = 0; i < RAST_PACKET_NUM_WORDS; i++) {
         iowrite32(words[i],
                   dev.virtbase + RAST_PACKET_WORD_BASE + (i * 4));
     }
-    //strobe the commit register  to signal the hardware about the packet being pushed
+
     iowrite32(1, dev.virtbase + RAST_COMMIT_OFFSET);
 }
 
 static void present_frame(void)
 {
-    // PRESENT lives at its own offset (RAST_PRESENT_OFFSET) and is a
-    // self-clearing pulse in hardware -- any nonzero write fires it.
-    // Using a separate offset (instead of a bit in CONTROL) keeps the
-    // CONTROL shadow intact across present requests.
+
+
     iowrite32(1, dev.virtbase + RAST_PRESENT_OFFSET);
 }
 
-//read the status register and save the
+
 static void read_status(rasterizer_status_t *status)
 {
     __u32 raw = ioread32(dev.virtbase + RAST_STATUS_OFFSET);
@@ -59,7 +58,7 @@ static void read_status(rasterizer_status_t *status)
     status->swap_busy  = (raw & RAST_STATUS_SWAP_BUSY_BIT) ? 1 : 0;
 }
 
-//write to the control register and update the shadow control register in the rasterizer_dev struct
+
 static void write_control(const rasterizer_control_t *ctrl)
 {
     __u32 raw = 0;
@@ -72,7 +71,7 @@ static void write_control(const rasterizer_control_t *ctrl)
     dev.control = *ctrl;
 }
 
-//main ioctl handler for the driver, call this from the userspace program to submit packets, read status, and set/get control
+
 static long rasterizer_ioctl(struct file *f, unsigned int cmd,
                               unsigned long arg)
 {
@@ -86,12 +85,12 @@ static long rasterizer_ioctl(struct file *f, unsigned int cmd,
                            sizeof(rasterizer_arg_t)))
             return -EACCES;
 
-	//check fifo_full first using a separate status variable so ra.packet stays intact
+
 	read_status(&current_status);
 	if (current_status.fifo_full) {
 	    return -EAGAIN;
 	}
-	// the extra read can be taken out if we want the code to have a policy to check status before calling submit
+
         writeTrianglePacket(&ra.packet);
         break;
 
@@ -118,11 +117,11 @@ static long rasterizer_ioctl(struct file *f, unsigned int cmd,
                          sizeof(rasterizer_arg_t)))
             return -EACCES;
         break;
-		
+
     case RASTERIZER_PRESENT:
     present_frame();
     break;
-		
+
     default:
         return -EINVAL;
     }
@@ -130,15 +129,7 @@ static long rasterizer_ioctl(struct file *f, unsigned int cmd,
     return 0;
 }
 
-// mmap the MMIO register region directly into userspace so the demo can
-// write triangle packets without one ioctl per triangle. We use
-// pgprot_writecombine (Normal Non-Cacheable on ARMv7) instead of
-// pgprot_noncached (strongly-ordered Device memory) so that the CPU can
-// coalesce the 17 sequential 32-bit packet writes into AXI bursts. The
-// FPGA latches the packet only when the COMMIT register is written, so
-// reordering and merging among the 17 word writes is safe; userspace
-// must insert a dsb() barrier before issuing COMMIT to guarantee that
-// all 17 stores have drained.
+
 static int rasterizer_mmap(struct file *f, struct vm_area_struct *vma)
 {
     unsigned long size  = vma->vm_end - vma->vm_start;
@@ -173,18 +164,18 @@ static int __init rasterizer_probe(struct platform_device *pdev)
 {
     int ret;
 
-    /* Set sane defaults for the control shadow */
+
     dev.control.irq_enable    = 0;
     dev.control.low_watermark = 0;
 
-    /* Register as a misc device → creates /dev/rasterizer */
+
     ret = misc_register(&rasterizer_misc_device);
     if (ret) {
         pr_err(DRIVER_NAME ": misc_register failed (%d)\n", ret);
         return ret;
     }
 
-    /* Get physical address from device tree */
+
     ret = of_address_to_resource(pdev->dev.of_node, 0, &dev.res);
     if (ret) {
         pr_err(DRIVER_NAME ": of_address_to_resource failed (%d)\n", ret);
@@ -192,7 +183,7 @@ static int __init rasterizer_probe(struct platform_device *pdev)
         goto out_deregister;
     }
 
-    /* Reserve the physical address region */
+
     if (request_mem_region(dev.res.start, resource_size(&dev.res),
                            DRIVER_NAME) == NULL) {
         pr_err(DRIVER_NAME ": request_mem_region failed\n");
@@ -200,7 +191,7 @@ static int __init rasterizer_probe(struct platform_device *pdev)
         goto out_deregister;
     }
 
-    /* Map physical region into kernel virtual address space */
+
     dev.virtbase = of_iomap(pdev->dev.of_node, 0);
     if (dev.virtbase == NULL) {
         pr_err(DRIVER_NAME ": of_iomap failed\n");
@@ -208,11 +199,7 @@ static int __init rasterizer_probe(struct platform_device *pdev)
         goto out_release_mem_region;
     }
 
-    /*
-     * Write the control register to a known-good initial state:
-     * IRQs disabled, watermark 0.  This also clears any stale state
-     * left by a previous insmod/rmmod cycle.
-     */
+
     write_control(&dev.control);
 
     pr_info(DRIVER_NAME ": probe OK, virtbase=%p phys=0x%08llx size=%llu\n",
@@ -229,7 +216,7 @@ out_deregister:
     return ret;
 }
 
-//when rmmod is called
+
 static int rasterizer_remove(struct platform_device *pdev)
 {
     rasterizer_control_t off = { .irq_enable = 0, .low_watermark = 0 };
@@ -249,7 +236,7 @@ static const struct of_device_id rasterizer_of_match[] = {
 MODULE_DEVICE_TABLE(of, rasterizer_of_match);
 #endif
 
-//register the driver
+
 static struct platform_driver rasterizer_driver = {
     .driver = {
         .name           = DRIVER_NAME,

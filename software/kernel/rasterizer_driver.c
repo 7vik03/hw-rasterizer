@@ -1,6 +1,3 @@
-/* rasterizer_driver.c
- * Linux kernel driver for the rasterizer Avalon-MM peripheral.
- * TODO: fill in
- */
+// rasterizer_driver.c
 
 #include "rasterizer.h"

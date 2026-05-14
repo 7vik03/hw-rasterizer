@@ -1,4 +1,5 @@
 // pixel_unit_tb.sv
+
 `timescale 1ns/1ps
 `include "triangle_packet.svh"
 
@@ -33,8 +34,8 @@ module pixel_unit_tb;
         .IS_LAST_PU(1'b0),
         .FB_DEPTH(FB_DEPTH),
         .Z_DEPTH(Z_DEPTH),
-        // unit test pokes z_mem directly via the z_clear_to_far task
-        // and expects ready high one cycle after reset
+
+
         .DO_INIT_CLEAR(1'b0)
     ) dut (
         .clk(clk),
@@ -279,9 +280,7 @@ module pixel_unit_tb;
         check(p_write === 1'b0, "p_write low at idle");
         check(seed_valid_out === 1'b0, "seed_valid_out low at idle");
 
-        // ------------------------------------------------------------
-        // Test 2
-        // ------------------------------------------------------------
+
         $display("--- Test 2: 5-row column, all-positive edges ---");
         wait_done();
         z_clear_to_far();
@@ -330,9 +329,7 @@ module pixel_unit_tb;
             check(pix_depth[i] === 16'h0100, $sformatf("pix[%0d].depth=%h expected 0100", i, pix_depth[i]));
         end
 
-        // ------------------------------------------------------------
-        // Test 3
-        // ------------------------------------------------------------
+
         $display("--- Test 3: negative edge culls all pixels ---");
         wait_done();
         z_clear_to_far();
@@ -364,9 +361,7 @@ module pixel_unit_tb;
 
         check(pix_n == 0, $sformatf("inside cull: expected 0 pixels, got %0d", pix_n));
 
-        // ------------------------------------------------------------
-        // Test 4
-        // ------------------------------------------------------------
+
         $display("--- Test 4: z-test culls farther fragment ---");
         wait_done();
         z_set_all(16'h0050);
@@ -398,9 +393,7 @@ module pixel_unit_tb;
 
         check(pix_n == 0, $sformatf("z-test reject: expected 0 pixels, got %0d", pix_n));
 
-        // ------------------------------------------------------------
-        // Test 4b
-        // ------------------------------------------------------------
+
         $display("--- Test 4b: z-test admits closer fragment ---");
         wait_done();
         z_set_all(16'h0050);
@@ -422,9 +415,7 @@ module pixel_unit_tb;
 
         check(pix_n == 4, $sformatf("z-test admit: expected 4 pixels, got %0d", pix_n));
 
-        // ------------------------------------------------------------
-        // Test 5
-        // ------------------------------------------------------------
+
         $display("--- Test 5: IS_LAST_PU instance does not forward ---");
         wait_done();
 
@@ -457,9 +448,7 @@ module pixel_unit_tb;
         repeat (10) @(posedge clk);
         #1;
 
-        // ------------------------------------------------------------
-        // Test 6
-        // ------------------------------------------------------------
+
         $display("--- Test 6: back-to-back ---");
         wait_done();
         z_clear_to_far();
@@ -513,9 +502,7 @@ module pixel_unit_tb;
             check(pix_row[i+3]   === 8'(100 + i), $sformatf("second-tri pix[%0d] row", i));
         end
 
-        // ------------------------------------------------------------
-        // Test 7
-        // ------------------------------------------------------------
+
         $display("--- Test 7: multi-column iteration (3 cols at stride 16) ---");
         wait_done();
         z_clear_to_far();

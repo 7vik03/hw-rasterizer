@@ -1,9 +1,7 @@
+// rasterizer_top_tb.sv
+
 `timescale 1ns/1ps
 
-// Smoke test only: instantiates rasterizer_top, toggles reset, idles the
-// Avalon bus, and confirms nothing flags an $error during a few thousand
-// cycles. A behavioral end-to-end test is blocked on Shlok's
-// avalon_interface being real rather than a stub.
 
 module rasterizer_top_tb;
 
@@ -47,7 +45,7 @@ module rasterizer_top_tb;
         avs_writedata = '0;
         repeat (5) @(posedge clk);
         rst = 0;
-        // let the design settle, VGA counters run through some lines
+
         repeat (2000) @(posedge clk);
         $display("PASS rasterizer_top_tb elaborated + idled");
         $finish;

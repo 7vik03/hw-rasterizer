@@ -1,11 +1,4 @@
 // model.c
-//
-// Procedural mesh generators and OBJ loader.
-//
-// All geometry matches demo.cpp exactly so test vectors from the golden
-// reference apply directly to the hardware.  The icosphere subdivision
-// uses a midpoint cache to avoid inserting duplicate vertices on shared
-// edges -- the same algorithm as the C++ version.
 
 #include "model.h"
 
@@ -14,9 +7,6 @@
 #include <string.h>
 #include <math.h>
 
-// ---- cube ----
-//
-// 8 vertices, 12 triangles, unit half-size centred at origin.
 
 void model_make_cube(model_t *m)
 {
@@ -42,16 +32,6 @@ void model_make_cube(model_t *m)
     m->num_faces = 12;
 }
 
-// ---- icosphere ----
-//
-// Starts from a regular icosahedron (20 faces, 12 vertices) and
-// subdivides each triangle into 4 by inserting midpoints on every edge.
-// Each midpoint is projected back onto the unit sphere so the result
-// stays round.  A flat cache of (a, b) -> mid_index pairs avoids
-// inserting the same midpoint twice when two triangles share an edge.
-//
-//   subdivisions=1 -> 80 faces  (sphere_lo)
-//   subdivisions=2 -> 320 faces (sphere_med)
 
 #define MIDPT_CACHE_MAX 2048
 
@@ -91,7 +71,7 @@ static int icosphere_midpoint(model_t *m, int a, int b)
     vec3_t vb  = m->verts[b];
     vec3_t mid = { (va.x+vb.x)*0.5f, (va.y+vb.y)*0.5f, (va.z+vb.z)*0.5f };
 
-    // project onto unit sphere
+
     float l = sqrtf(mid.x*mid.x + mid.y*mid.y + mid.z*mid.z);
     if (l > 1e-8f) { mid.x /= l; mid.y /= l; mid.z /= l; }
 
@@ -147,7 +127,7 @@ void model_make_icosphere(model_t *m, int subdivisions)
             int b = icosphere_midpoint(m, v1, v2);
             int c = icosphere_midpoint(m, v2, v0);
 
-            // each original triangle splits into 4
+
             tmp[new_count++] = (face_t){{ v0, a, c }};
             tmp[new_count++] = (face_t){{ v1, b, a }};
             tmp[new_count++] = (face_t){{ v2, c, b }};
@@ -159,10 +139,6 @@ void model_make_icosphere(model_t *m, int subdivisions)
     }
 }
 
-// ---- torus ----
-//
-// major_seg rings, each with minor_seg vertices.  Each quad cell is
-// split into two triangles.  Default: 12x8 = 192 faces.
 
 void model_make_torus(model_t *m, int major_seg, int minor_seg,
                       float R, float r)
@@ -198,16 +174,6 @@ void model_make_torus(model_t *m, int major_seg, int minor_seg,
     }
 }
 
-// ---- OBJ loader ----
-//
-// Handles "v" (vertex) and "f" (face) lines.  Face tokens may be
-// "v", "v/t", or "v/t/n" -- only the vertex index is used.  Quads
-// (4 tokens on an f line) are split into two triangles: (0,1,2) and
-// (0,2,3).  Vertex indices from the file are 1-based; we subtract 1.
-//
-// All vertex indices are bounds-checked against the vertices seen so
-// far; faces referencing out-of-range indices are silently skipped so
-// a malformed file cannot cause an out-of-bounds write.
 
 int model_load_obj(model_t *m, const char *filename)
 {
@@ -238,11 +204,11 @@ int model_load_obj(model_t *m, const char *filename)
                 if (*p == '\0' || *p == '\n' || *p == '\r') break;
                 int v_idx = 0;
                 if (sscanf(p, "%d", &v_idx) != 1) break;
-                idx[n++] = v_idx - 1;  // OBJ indices are 1-based
+                idx[n++] = v_idx - 1;
                 while (*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
             }
 
-            // bounds-check all indices; skip face if any are invalid
+
             int valid = 1;
             for (int vi = 0; vi < n; vi++) {
                 if (idx[vi] < 0 || idx[vi] >= m->num_verts) {
@@ -262,21 +228,10 @@ int model_load_obj(model_t *m, const char *filename)
     return (m->num_verts > 0 && m->num_faces > 0) ? 0 : -1;
 }
 
-// ---- Utah teapot ----
-//
-// The classic 32-patch bicubic Bezier teapot (Newell, 1975).
-// Each patch is tessellated at TEAPOT_DIV x TEAPOT_DIV quads and
-// each quad split into 2 triangles.  At DIV=4: 32*4*4*2 = 1024 faces.
-// Vertices shared between patches may be duplicated; the face count
-// is the hard constraint (MODEL_MAX_FACES=2048).
-//
-// Control point indices reference the 306 canonical teapot vertices.
-// The vertex table and patch index table are the standard Newell data.
 
-#define TEAPOT_DIV 3   // subdivision steps per patch edge; 32*3*3*2=576 faces
+#define TEAPOT_DIV 3
 
-// 306 control point positions (x,y,z), Newell's original coordinates.
-// Y is up; teapot sits near y=0 and extends to y~3.15.
+
 static const float teapot_cp[306][3] = {
     {1.4f,2.4f,0.0f},{1.4f,2.4f,-0.784f},{0.784f,2.4f,-1.4f},
     {0.0f,2.4f,-1.4f},{1.3375f,2.53125f,0.0f},{1.3375f,2.53125f,-0.749f},
@@ -370,8 +325,7 @@ static const float teapot_cp[306][3] = {
     {-1.425f,0.0f,0.0f},{-0.798f,0.0f,-1.425f},{0.0f,0.0f,-1.425f}
 };
 
-// 32 patches, each referencing 16 control point indices (1-based, Newell canonical).
-// Source: https://github.com/rm-hull/newell-teapot/blob/master/teapot
+
 static const int teapot_patches[32][16] = {
     {  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16},
     {  4, 17, 18, 19,  8, 20, 21, 22, 12, 23, 24, 25, 16, 26, 27, 28},
@@ -407,14 +361,14 @@ static const int teapot_patches[32][16] = {
     {270,270,270,270,300,305,306,279,297,303,304,275,294,301,302,271},
 };
 
-// evaluate a cubic Bezier curve at parameter t
+
 static float bezier1(float p0, float p1, float p2, float p3, float t)
 {
     float mt = 1.0f - t;
     return mt*mt*mt*p0 + 3.0f*mt*mt*t*p1 + 3.0f*mt*t*t*p2 + t*t*t*p3;
 }
 
-// evaluate a 4x4 bicubic Bezier patch at (u,v)
+
 static vec3_t bezier_patch(const float cp[16][3], float u, float v)
 {
     float tmp[4][3];
@@ -438,16 +392,16 @@ void model_make_teapot(model_t *m)
     int div = TEAPOT_DIV;
 
     for (int p = 0; p < 32; p++) {
-        // gather the 16 control points for this patch
+
         float cp[16][3];
         for (int k = 0; k < 16; k++) {
-            int idx = teapot_patches[p][k] - 1;  // convert 1-based to 0-based
+            int idx = teapot_patches[p][k] - 1;
             cp[k][0] = teapot_cp[idx][0];
             cp[k][1] = teapot_cp[idx][1];
             cp[k][2] = teapot_cp[idx][2];
         }
 
-        // tessellate into div x div quads
+
         for (int i = 0; i < div; i++) {
             float u0 = (float)i       / div;
             float u1 = (float)(i + 1) / div;
@@ -463,22 +417,21 @@ void model_make_teapot(model_t *m)
                 vec3_t q01 = bezier_patch(cp, u0, v1);
                 vec3_t q11 = bezier_patch(cp, u1, v1);
 
-                // scale down: teapot coords go up to ~2.5; fit in unit cube
+
                 float scale = 0.4f;
-                float oy    = -1.2f;  // centre vertically
+                float oy    = -1.2f;
                 q00.x *= scale; q00.y = q00.y * scale + oy; q00.z *= scale;
                 q10.x *= scale; q10.y = q10.y * scale + oy; q10.z *= scale;
                 q01.x *= scale; q01.y = q01.y * scale + oy; q01.z *= scale;
                 q11.x *= scale; q11.y = q11.y * scale + oy; q11.z *= scale;
 
-                // check winding: cross(q10-q00, q01-q00) should point outward
-                // (away from origin).  If not, swap to get CCW from outside.
+
                 float ex = q10.x - q00.x, ey = q10.y - q00.y, ez = q10.z - q00.z;
                 float fx = q01.x - q00.x, fy = q01.y - q00.y, fz = q01.z - q00.z;
                 float nx = ey*fz - ez*fy;
                 float ny = ez*fx - ex*fz;
                 float nz = ex*fy - ey*fx;
-                // dot with q00 position (outward check from origin)
+
                 int flip = (nx*q00.x + ny*q00.y + nz*q00.z) < 0.0f;
 
                 int base = m->num_verts;
@@ -500,8 +453,6 @@ void model_make_teapot(model_t *m)
 done:;
 }
 
-// ---- Utah teapot (OBJ 552 faces, baked-in) ----
-// Generated from 552.obj so key 9 does not depend on runtime file lookup.
 
 static const vec3_t teapot552_verts[] = {
     {-1.5f, 2.25f, 0.0f},
@@ -1381,19 +1332,13 @@ void model_make_teapot_552(model_t *m)
 }
 
 
-// ---- Saturn ----
-//
-// Sphere body (icosphere subdiv=1, 80 faces) plus a flat torus ring
-// tilted ~27 degrees.  Ring: 24 major x 6 minor = 288 faces.
-// Total ~368 faces.
-
 void model_make_saturn(model_t *m)
 {
-    // ---- body: unit icosphere scaled down, reuse model_make_icosphere ----
-    model_make_icosphere(m, 1);   // 80 faces, unit sphere
+
+    model_make_icosphere(m, 1);
     strncpy(m->name, "saturn", sizeof(m->name) - 1);
 
-    // scale all body verts to radius 0.55
+
     for (int i = 0; i < m->num_verts; i++) {
         m->verts[i].x *= 0.55f;
         m->verts[i].y *= 0.55f;
@@ -1401,7 +1346,7 @@ void model_make_saturn(model_t *m)
     }
     int body_vert_count = m->num_verts;
 
-    // ---- ring: flat torus tilted 27 degrees around Z ----
+
     int   major_seg = 24, minor_seg = 5;
     float R = 1.1f, r = 0.15f;
     float tilt = 27.0f * (float)M_PI / 180.0f;
@@ -1415,7 +1360,7 @@ void model_make_saturn(model_t *m)
             float rx = (R + r * cosf(phi)) * cosf(theta);
             float ry = r * sinf(phi);
             float rz = (R + r * cosf(phi)) * sinf(theta);
-            // tilt around Z axis
+
             m->verts[m->num_verts++] = (vec3_t){
                 rx,
                 ry * ct - rz * st,
@@ -1441,44 +1386,38 @@ void model_make_saturn(model_t *m)
 ring_done:;
 }
 
-// ---- Lego brick (2x4 stud) ----
-//
-// A rectangular box body with 8 cylindrical studs on top.
-// Body is a simple box; each stud is a cylinder with SEG sides.
-// SEG=8 studs=8: 12 (box) + 8*(SEG*2 + SEG) (side+top+bottom cap) faces
-// At SEG=8: 12 + 8*24 = 204 faces, well within budget.
 
 static void add_box(model_t *m,
                     float x0, float y0, float z0,
                     float x1, float y1, float z1)
 {
     int b = m->num_verts;
-    // 8 corners: bottom face then top face
-    m->verts[m->num_verts++] = (vec3_t){ x0, y0, z0 };  // b+0
-    m->verts[m->num_verts++] = (vec3_t){ x1, y0, z0 };  // b+1
-    m->verts[m->num_verts++] = (vec3_t){ x1, y0, z1 };  // b+2
-    m->verts[m->num_verts++] = (vec3_t){ x0, y0, z1 };  // b+3
-    m->verts[m->num_verts++] = (vec3_t){ x0, y1, z0 };  // b+4
-    m->verts[m->num_verts++] = (vec3_t){ x1, y1, z0 };  // b+5
-    m->verts[m->num_verts++] = (vec3_t){ x1, y1, z1 };  // b+6
-    m->verts[m->num_verts++] = (vec3_t){ x0, y1, z1 };  // b+7
 
-    // bottom
+    m->verts[m->num_verts++] = (vec3_t){ x0, y0, z0 };
+    m->verts[m->num_verts++] = (vec3_t){ x1, y0, z0 };
+    m->verts[m->num_verts++] = (vec3_t){ x1, y0, z1 };
+    m->verts[m->num_verts++] = (vec3_t){ x0, y0, z1 };
+    m->verts[m->num_verts++] = (vec3_t){ x0, y1, z0 };
+    m->verts[m->num_verts++] = (vec3_t){ x1, y1, z0 };
+    m->verts[m->num_verts++] = (vec3_t){ x1, y1, z1 };
+    m->verts[m->num_verts++] = (vec3_t){ x0, y1, z1 };
+
+
     m->faces[m->num_faces++] = (face_t){{ b+0, b+2, b+1 }};
     m->faces[m->num_faces++] = (face_t){{ b+0, b+3, b+2 }};
-    // top
+
     m->faces[m->num_faces++] = (face_t){{ b+4, b+5, b+6 }};
     m->faces[m->num_faces++] = (face_t){{ b+4, b+6, b+7 }};
-    // front (z0)
+
     m->faces[m->num_faces++] = (face_t){{ b+0, b+1, b+5 }};
     m->faces[m->num_faces++] = (face_t){{ b+0, b+5, b+4 }};
-    // back (z1)
+
     m->faces[m->num_faces++] = (face_t){{ b+2, b+3, b+7 }};
     m->faces[m->num_faces++] = (face_t){{ b+2, b+7, b+6 }};
-    // left (x0)
+
     m->faces[m->num_faces++] = (face_t){{ b+3, b+0, b+4 }};
     m->faces[m->num_faces++] = (face_t){{ b+3, b+4, b+7 }};
-    // right (x1)
+
     m->faces[m->num_faces++] = (face_t){{ b+1, b+2, b+6 }};
     m->faces[m->num_faces++] = (face_t){{ b+1, b+6, b+5 }};
 }
@@ -1504,11 +1443,11 @@ static void add_cylinder(model_t *m, float cx, float cy_bot, float cy_top,
 
     for (int i = 0; i < seg; i++) {
         int ni = (i + 1) % seg;
-        // bottom cap
+
         m->faces[m->num_faces++] = (face_t){{ bot_centre, ring_bot+i, ring_bot+ni }};
-        // top cap
+
         m->faces[m->num_faces++] = (face_t){{ top_centre, ring_top+ni, ring_top+i }};
-        // side
+
         m->faces[m->num_faces++] = (face_t){{ ring_bot+i, ring_top+i,  ring_top+ni }};
         m->faces[m->num_faces++] = (face_t){{ ring_bot+i, ring_top+ni, ring_bot+ni }};
     }
@@ -1519,11 +1458,11 @@ void model_make_lego(model_t *m)
     memset(m, 0, sizeof(*m));
     strncpy(m->name, "lego", sizeof(m->name) - 1);
 
-    // brick body: 4 studs wide (x), 2 studs deep (z), standard height
+
     float bx = 1.6f, by = 0.6f, bz = 0.8f;
     add_box(m, -bx, -by, -bz, bx, by, bz);
 
-    // 8 studs in a 4x2 grid on top
+
     int   seg     = 8;
     float stud_r  = 0.22f;
     float stud_h  = 0.22f;
@@ -1537,32 +1476,24 @@ void model_make_lego(model_t *m)
             add_cylinder(m, xs[xi], stud_y0, stud_y1, zs[zi], stud_r, seg);
 }
 
-// ---- DNA double helix ----
-//
-// Two helical tubes (strands A and B, offset 180 degrees) connected by
-// flat rungs every ~half turn.  Each tube is a series of cylinder
-// segments following a helical path; rungs are flat quads.
-// STEPS=30 steps, tube_seg=5: 2*(30*5*4) sides + 30*2 rung tris = ~1260 faces.
-// Clamped by MODEL_MAX_FACES.
 
 void model_make_dna(model_t *m)
 {
     memset(m, 0, sizeof(*m));
     strncpy(m->name, "dna", sizeof(m->name) - 1);
 
-    int   steps    = 20;        // steps along the helix axis
-    int   tube_seg = 4;         // polygon sides per tube ring
-    float helix_r  = 0.55f;    // radius of each strand from centre axis
-    float tube_r   = 0.09f;    // tube cross-section radius
-    float pitch    = 2.0f;     // height of one full twist
+    int   steps    = 20;
+    int   tube_seg = 4;
+    float helix_r  = 0.55f;
+    float tube_r   = 0.09f;
+    float pitch    = 2.0f;
     float total_h  = 2.0f;
     float y_bot    = -total_h * 0.5f;
 
-    // ring_base[strand][step] = first vert index of that ring
-    // max 2 strands * 21 steps = 42 rings
+
     int ring_base[2][21];
 
-    // ---- build both strands, record ring base indices ----
+
     for (int strand = 0; strand < 2; strand++) {
         float phase    = strand * (float)M_PI;
         int   prev_ring = -1;
@@ -1575,7 +1506,7 @@ void model_make_dna(model_t *m)
             float cx = helix_r * cosf(angle);
             float cz = helix_r * sinf(angle);
 
-            // helix tangent
+
             float da   = 2.0f * (float)M_PI * (total_h / pitch) / steps;
             float tx   = -helix_r * sinf(angle) * da;
             float ty   =  total_h / steps;
@@ -1583,12 +1514,12 @@ void model_make_dna(model_t *m)
             float tlen = sqrtf(tx*tx + ty*ty + tz*tz);
             if (tlen > 1e-6f) { tx/=tlen; ty/=tlen; tz/=tlen; }
 
-            // frame: u = (tz, 0, -tx) -- a radial-outward vector
+
             float ux = tz, uy = 0.0f, uz = -tx;
             float ulen = sqrtf(ux*ux + uz*uz);
             if (ulen < 1e-6f) { ux = 1.0f; uz = 0.0f; }
             else { ux/=ulen; uz/=ulen; }
-            // v = tangent x u
+
             float vx = ty*uz - tz*uy;
             float vy = tz*ux - tx*uz;
             float vz = tx*uy - ty*ux;
@@ -1620,12 +1551,10 @@ void model_make_dna(model_t *m)
         }
     }
 
-    // ---- rungs: a small 3D box spanning from strand 0 to strand 1
-    //      every 2 steps.  Uses add_box() so all 6 faces are present
-    //      and none get culled regardless of viewing angle. ----
-    float rung_hw = 0.06f;   // half-width of rung cross-section
+
+    float rung_hw = 0.06f;
     for (int s = 0; s <= steps; s += 2) {
-        // compute the helix centre positions for both strands at step s
+
         float t      = (float)s / steps;
         float y      = y_bot + t * total_h;
         float angle0 = 2.0f * (float)M_PI * t * (total_h / pitch);
@@ -1634,18 +1563,18 @@ void model_make_dna(model_t *m)
         float x0 = helix_r * cosf(angle0), z0 = helix_r * sinf(angle0);
         float x1 = helix_r * cosf(angle1), z1 = helix_r * sinf(angle1);
 
-        // direction along the rung (strand0 -> strand1), perpendicular to it
+
         float dx = x1-x0, dz = z1-z0;
         float dlen = sqrtf(dx*dx + dz*dz);
         if (dlen < 1e-6f) continue;
-        // perpendicular in XZ: (-dz, dx) normalised
+
         float px = -dz/dlen * rung_hw;
         float pz =  dx/dlen * rung_hw;
 
         if (m->num_verts + 8 > MODEL_MAX_VERTS) break;
         if (m->num_faces + 12 > MODEL_MAX_FACES) break;
 
-        // 8 box corners: 4 at strand-0 end, 4 at strand-1 end
+
         int b = m->num_verts;
         m->verts[m->num_verts++] = (vec3_t){ x0+px, y-rung_hw, z0+pz };
         m->verts[m->num_verts++] = (vec3_t){ x0-px, y-rung_hw, z0-pz };
@@ -1656,23 +1585,22 @@ void model_make_dna(model_t *m)
         m->verts[m->num_verts++] = (vec3_t){ x1-px, y+rung_hw, z1-pz };
         m->verts[m->num_verts++] = (vec3_t){ x1+px, y+rung_hw, z1+pz };
 
-        // 6 faces x 2 triangles = 12 triangles
-        // strand-0 end cap
+
         m->faces[m->num_faces++] = (face_t){{ b+0, b+1, b+2 }};
         m->faces[m->num_faces++] = (face_t){{ b+0, b+2, b+3 }};
-        // strand-1 end cap
+
         m->faces[m->num_faces++] = (face_t){{ b+4, b+6, b+5 }};
         m->faces[m->num_faces++] = (face_t){{ b+4, b+7, b+6 }};
-        // top face
+
         m->faces[m->num_faces++] = (face_t){{ b+3, b+2, b+6 }};
         m->faces[m->num_faces++] = (face_t){{ b+3, b+6, b+7 }};
-        // bottom face
+
         m->faces[m->num_faces++] = (face_t){{ b+0, b+5, b+1 }};
         m->faces[m->num_faces++] = (face_t){{ b+0, b+4, b+5 }};
-        // side A
+
         m->faces[m->num_faces++] = (face_t){{ b+0, b+3, b+7 }};
         m->faces[m->num_faces++] = (face_t){{ b+0, b+7, b+4 }};
-        // side B
+
         m->faces[m->num_faces++] = (face_t){{ b+1, b+5, b+6 }};
         m->faces[m->num_faces++] = (face_t){{ b+1, b+6, b+2 }};
     }
@@ -1680,10 +1608,6 @@ void model_make_dna(model_t *m)
 dna_done:;
 }
 
-// ---- rocket ----
-//
-// Nose cone (hemisphere, SEG=10 latitudes) + cylindrical body + 4 fins.
-// Nose: ~100 faces, body: ~40 faces, fins: 4*2 = 8 faces. Total ~148.
 
 void model_make_rocket(model_t *m)
 {
@@ -1696,7 +1620,7 @@ void model_make_rocket(model_t *m)
     float body_top =  0.4f;
     float nose_top =  1.2f;
 
-    // ---- cylindrical body ----
+
     int ring_bot = m->num_verts;
     for (int i = 0; i < seg; i++) {
         float a = 2.0f * (float)M_PI * i / seg;
@@ -1707,33 +1631,32 @@ void model_make_rocket(model_t *m)
         float a = 2.0f * (float)M_PI * i / seg;
         m->verts[m->num_verts++] = (vec3_t){ body_r*cosf(a), body_top, body_r*sinf(a) };
     }
-    // bottom cap centre
+
     int bot_c = m->num_verts;
     m->verts[m->num_verts++] = (vec3_t){ 0.0f, body_bot, 0.0f };
 
     for (int i = 0; i < seg; i++) {
         int ni = (i + 1) % seg;
-        // body side
+
         m->faces[m->num_faces++] = (face_t){{ ring_bot+i, ring_top+i,  ring_top+ni }};
         m->faces[m->num_faces++] = (face_t){{ ring_bot+i, ring_top+ni, ring_bot+ni }};
-        // bottom cap
+
         m->faces[m->num_faces++] = (face_t){{ bot_c, ring_bot+ni, ring_bot+i }};
     }
 
-    // ---- hemispherical nose cone ----
-    // latitude rings from body_top up to nose_top
+
     int lat       = 6;
     float nose_h  = nose_top - body_top;
     int prev_ring = ring_top;
 
     for (int l = 1; l <= lat; l++) {
         float t = (float)l / lat;
-        // parametric hemisphere: r shrinks, y rises
+
         float y = body_top + nose_h * (1.0f - cosf(t * (float)M_PI / 2.0f));
         float r = body_r   * cosf(t * (float)M_PI / 2.0f);
 
         if (l == lat) {
-            // apex vertex
+
             int apex = m->num_verts;
             m->verts[m->num_verts++] = (vec3_t){ 0.0f, nose_top, 0.0f };
             for (int i = 0; i < seg; i++) {
@@ -1755,10 +1678,9 @@ void model_make_rocket(model_t *m)
         }
     }
 
-    // ---- 4 fins ----
-    // thin triangular fins equally spaced around the base
+
     float fin_angles[4] = { 0.0f, (float)M_PI/2, (float)M_PI, 3.0f*(float)M_PI/2 };
-    float fin_out  = 0.85f;  // how far fin extends radially
+    float fin_out  = 0.85f;
     float fin_bot  = body_bot;
     float fin_top  = body_bot + 0.55f;
     float fin_thick = 0.04f;
@@ -1767,87 +1689,74 @@ void model_make_rocket(model_t *m)
         float ca = cosf(fin_angles[f]);
         float sa = sinf(fin_angles[f]);
 
-        // tip of fin (outer edge, at body_bot level)
+
         float tx = (body_r + fin_out) * ca;
         float tz = (body_r + fin_out) * sa;
-        // inner-bottom (where fin meets body at bottom)
+
         float ibx = body_r * ca, ibz = body_r * sa;
-        // inner-top (where fin meets body higher up)
+
         float itx = body_r * ca, itz = body_r * sa;
 
-        // slight thickness offset perpendicular to the fin
+
         float ox = -sa * fin_thick;
         float oz =  ca * fin_thick;
 
         int b = m->num_verts;
-        m->verts[m->num_verts++] = (vec3_t){ ibx+ox, fin_bot, ibz+oz };  // b+0
-        m->verts[m->num_verts++] = (vec3_t){ ibx-ox, fin_bot, ibz-oz };  // b+1
-        m->verts[m->num_verts++] = (vec3_t){ tx,     fin_bot, tz      };  // b+2 tip-bot
-        m->verts[m->num_verts++] = (vec3_t){ itx+ox, fin_top, itz+oz  };  // b+3
-        m->verts[m->num_verts++] = (vec3_t){ itx-ox, fin_top, itz-oz  };  // b+4
+        m->verts[m->num_verts++] = (vec3_t){ ibx+ox, fin_bot, ibz+oz };
+        m->verts[m->num_verts++] = (vec3_t){ ibx-ox, fin_bot, ibz-oz };
+        m->verts[m->num_verts++] = (vec3_t){ tx,     fin_bot, tz      };
+        m->verts[m->num_verts++] = (vec3_t){ itx+ox, fin_top, itz+oz  };
+        m->verts[m->num_verts++] = (vec3_t){ itx-ox, fin_top, itz-oz  };
 
-        // front face
+
         m->faces[m->num_faces++] = (face_t){{ b+0, b+2, b+3 }};
-        // back face
+
         m->faces[m->num_faces++] = (face_t){{ b+1, b+4, b+2 }};
-        // top edge face
+
         m->faces[m->num_faces++] = (face_t){{ b+3, b+4, b+0 }};
         m->faces[m->num_faces++] = (face_t){{ b+4, b+1, b+0 }};
     }
 }
 
-// ---- Lego minifigure ----
-//
-// Classic T-pose minifigure assembled from boxes and cylinders.
-// Parts (y increases upward, figure centred at origin):
-//   legs   : two boxes side by side hanging down
-//   hips   : wide short box connecting legs
-//   torso  : taller box, slightly narrower than hips
-//   arms   : two small boxes out to the sides at shoulder height
-//   hands  : small cylinders at arm ends
-//   neck   : short cylinder
-//   head   : cylinder (the iconic round head)
-//   stud   : tiny cylinder on top of head
-// Total ~170 faces.
 
 void model_make_minifigure(model_t *m)
 {
     memset(m, 0, sizeof(*m));
     strncpy(m->name, "minifig", sizeof(m->name) - 1);
 
-    // ---- legs ----
+
     float leg_w   = 0.18f, leg_d = 0.18f;
     float leg_bot = -1.0f, leg_top = -0.35f;
-    float leg_sep = 0.21f;   // centre-to-centre x offset
-    // left leg
+    float leg_sep = 0.21f;
+
     add_box(m, -leg_sep-leg_w, leg_bot, -leg_d,
                 -leg_sep+leg_w, leg_top,  leg_d);
-    // right leg
+
     add_box(m,  leg_sep-leg_w, leg_bot, -leg_d,
                 leg_sep+leg_w, leg_top,  leg_d);
 
-    // ---- hips ----
+
     float hip_w = 0.42f, hip_h = 0.18f, hip_d = 0.18f;
     add_box(m, -hip_w, leg_top, -hip_d, hip_w, leg_top+hip_h, hip_d);
 
-    // ---- torso ----
+
     float tor_w = 0.36f, tor_d = 0.16f;
     float tor_bot = leg_top + hip_h;
     float tor_top = tor_bot + 0.52f;
     add_box(m, -tor_w, tor_bot, -tor_d, tor_w, tor_top, tor_d);
 
-    // ---- arms (horizontal boxes out from shoulders) ----
+
     float arm_w = 0.22f, arm_h = 0.14f, arm_d = 0.13f;
     float arm_y0 = tor_top - 0.16f;
     float arm_y1 = arm_y0  - arm_h;
-    // left arm
+
     add_box(m, -(tor_w + arm_w*2), arm_y1, -arm_d,
                -(tor_w),           arm_y0,  arm_d);
-    // right arm
+
     add_box(m,  tor_w,             arm_y1, -arm_d,
                 tor_w + arm_w*2,   arm_y0,  arm_d);
 
-    // ---- hands (small cylinders at arm ends) ----
+
     int   hand_seg = 6;
     float hand_r   = 0.09f;
     float hand_cx_l = -(tor_w + arm_w*2 + hand_r);
@@ -1858,19 +1767,19 @@ void model_make_minifigure(model_t *m)
     add_cylinder(m, hand_cx_r, hand_cy - hand_r, hand_cy + hand_r,
                  0.0f, hand_r, hand_seg);
 
-    // ---- neck ----
+
     float neck_r   = 0.10f;
     float neck_bot = tor_top;
     float neck_top = tor_top + 0.10f;
     add_cylinder(m, 0.0f, neck_bot, neck_top, 0.0f, neck_r, 6);
 
-    // ---- head (wider cylinder) ----
+
     float head_r   = 0.30f;
     float head_bot = neck_top;
     float head_top = head_bot + 0.38f;
     add_cylinder(m, 0.0f, head_bot, head_top, 0.0f, head_r, 10);
 
-    // ---- stud on top of head ----
+
     float stud_r   = 0.10f;
     float stud_bot = head_top;
     float stud_top = head_top + 0.08f;

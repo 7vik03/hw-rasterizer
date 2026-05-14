@@ -1,3 +1,5 @@
+// triangle_fifo_tb.sv
+
 `timescale 1ns/1ps
 `include "triangle_packet.svh"
 
@@ -40,8 +42,7 @@ module triangle_fifo_tb;
         end
     endtask
 
-    // capture popped packets in FIFO order via a slave always_ff so NBA
-    // ordering between dut and tb is unambiguous
+
     int               seen_count;
     triangle_packet_t seen [NUM_PACKETS];
 
@@ -69,7 +70,7 @@ module triangle_fifo_tb;
         check(!full, "not full after reset");
         check(level == 6'd0, "level 0 after reset");
 
-        // push NUM_PACKETS entries, one per cycle, each tagged by color
+
         for (int i = 0; i < NUM_PACKETS; i++) begin
             sent[i]        = '0;
             sent[i].color  = 8'(i + 8'hA0);
@@ -84,7 +85,7 @@ module triangle_fifo_tb;
         check(level == 6'(NUM_PACKETS), "level matches push count");
         check(!empty, "not empty after pushes");
 
-        // drain back-to-back
+
         pop <= 1'b1;
         repeat (NUM_PACKETS) @(posedge clk);
         pop <= 1'b0;

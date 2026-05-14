@@ -1,14 +1,8 @@
+// avalon_interface_tb.sv
+
 `timescale 1ns/1ps
 `include "triangle_packet.svh"
 
-// avalon_interface_tb (DEBUG VERSION)
-// ----------------------------------
-// Same test plan as before but loud:
-//   - every Avalon write logs addr + data + cycle
-//   - every FIFO push logs the captured packet
-//   - every FIFO pop logs the data flowing out
-//   - every status read logs the raw word
-//   - mismatches print field-by-field diffs
 
 module avalon_interface_tb;
 
@@ -19,7 +13,7 @@ module avalon_interface_tb;
     localparam logic [6:0] ADDR_STATUS    = 7'h12;
     localparam logic [6:0] ADDR_CONTROL   = 7'h13;
 
-    // -------- DUT signals --------
+
     logic             clk;
     logic             rst;
 
@@ -58,7 +52,7 @@ module avalon_interface_tb;
         forever #5 clk = ~clk;
     end
 
-    // -------- cycle counter for debug output --------
+
     int cycle;
     always_ff @(posedge clk) begin
         if (rst) cycle <= 0;
@@ -73,9 +67,7 @@ module avalon_interface_tb;
         end
     endtask
 
-    // -----------------------------------------------------------------
-    // SPY 1: every clock edge where we see a bus transaction, log it
-    // -----------------------------------------------------------------
+
     always_ff @(posedge clk) begin
         if (!rst && avalon_write) begin
             if (avalon_address >= ADDR_PACKET_LO && avalon_address <= 7'h10) begin
@@ -97,11 +89,7 @@ module avalon_interface_tb;
         end
     end
 
-    // -----------------------------------------------------------------
-    // SPY 2: every FIFO push, log the packet captured
-    // dut.fifo_push and dut.fifo_push_data are internal hierarchical
-    // references - these only work when the DUT exposes them by name.
-    // -----------------------------------------------------------------
+
     always_ff @(posedge clk) begin
         if (!rst && dut.fifo_push) begin
             $display("[cyc=%0d t=%0t] FIFO PUSH",
@@ -121,9 +109,7 @@ module avalon_interface_tb;
         end
     end
 
-    // -----------------------------------------------------------------
-    // SPY 3: every cycle pop_ACK is asserted, log the pop
-    // -----------------------------------------------------------------
+
     always_ff @(posedge clk) begin
         if (!rst && pop_ACK) begin
             $display("[cyc=%0d t=%0t] FIFO POP (level was %0d)",
@@ -133,9 +119,7 @@ module avalon_interface_tb;
         end
     end
 
-    // -----------------------------------------------------------------
-    // SPY 4: edge-detect on fifo_level to catch all changes
-    // -----------------------------------------------------------------
+
     logic [5:0] prev_level;
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -149,9 +133,7 @@ module avalon_interface_tb;
         end
     end
 
-    // -----------------------------------------------------------------
-    // Avalon bus drivers
-    // -----------------------------------------------------------------
+
     task automatic avalon_write_word(input logic [6:0] addr,
                                      input logic [31:0] data);
         avalon_address  <= addr;
@@ -174,30 +156,28 @@ module avalon_interface_tb;
         avalon_address <= '0;
     endtask
 
-    // -----------------------------------------------------------------
-    // Packet builder + golden expected
-    // -----------------------------------------------------------------
+
     function automatic void make_packet_words(input int idx,
                                               output logic [31:0] words [17]);
-        words[ 0] = 32'(idx * 32'h1000 + 32'h0001);   // a0
-        words[ 1] = 32'(idx * 32'h1000 + 32'h0002);   // b0
-        words[ 2] = 32'(idx * 32'h1000 + 32'h0003);   // c0 (dropped)
-        words[ 3] = 32'(idx * 32'h1000 + 32'h0004);   // a1
-        words[ 4] = 32'(idx * 32'h1000 + 32'h0005);   // b1
-        words[ 5] = 32'(idx * 32'h1000 + 32'h0006);   // c1 (dropped)
-        words[ 6] = 32'(idx * 32'h1000 + 32'h0007);   // a2
-        words[ 7] = 32'(idx * 32'h1000 + 32'h0008);   // b2
-        words[ 8] = 32'(idx * 32'h1000 + 32'h0009);   // c2 (dropped)
-        words[ 9] = 32'(idx * 32'h1000 + 32'h000A);   // e0_init
-        words[10] = 32'(idx * 32'h1000 + 32'h000B);   // e1_init
-        words[11] = 32'(idx * 32'h1000 + 32'h000C);   // e2_init
-        words[12] = 32'(idx * 32'h1000 + 32'h000D);   // z_origin
-        words[13] = 32'(idx * 32'h1000 + 32'h000E);   // z_step_x
-        words[14] = 32'(idx * 32'h1000 + 32'h000F);   // z_step_y
-        words[15] = {8'(idx + 8'd40),    // ymax
-                     8'(idx + 8'd10),    // ymin
-                     8'(idx + 8'd50),    // xmax
-                     8'(idx + 8'd20)};   // xmin
+        words[ 0] = 32'(idx * 32'h1000 + 32'h0001);
+        words[ 1] = 32'(idx * 32'h1000 + 32'h0002);
+        words[ 2] = 32'(idx * 32'h1000 + 32'h0003);
+        words[ 3] = 32'(idx * 32'h1000 + 32'h0004);
+        words[ 4] = 32'(idx * 32'h1000 + 32'h0005);
+        words[ 5] = 32'(idx * 32'h1000 + 32'h0006);
+        words[ 6] = 32'(idx * 32'h1000 + 32'h0007);
+        words[ 7] = 32'(idx * 32'h1000 + 32'h0008);
+        words[ 8] = 32'(idx * 32'h1000 + 32'h0009);
+        words[ 9] = 32'(idx * 32'h1000 + 32'h000A);
+        words[10] = 32'(idx * 32'h1000 + 32'h000B);
+        words[11] = 32'(idx * 32'h1000 + 32'h000C);
+        words[12] = 32'(idx * 32'h1000 + 32'h000D);
+        words[13] = 32'(idx * 32'h1000 + 32'h000E);
+        words[14] = 32'(idx * 32'h1000 + 32'h000F);
+        words[15] = {8'(idx + 8'd40),
+                     8'(idx + 8'd10),
+                     8'(idx + 8'd50),
+                     8'(idx + 8'd20)};
         words[16] = {23'd0, 1'b1, 8'(idx + 8'h80)};
     endfunction
 
@@ -225,9 +205,7 @@ module avalon_interface_tb;
         return p;
     endfunction
 
-    // -----------------------------------------------------------------
-    // submit one packet over the bus
-    // -----------------------------------------------------------------
+
     task automatic submit_packet(input int idx);
         logic [31:0] words [17];
         $display("=========================================================");
@@ -249,9 +227,7 @@ task automatic pop_one(output triangle_packet_t got);
     pop <= 1'b1;
     while (!pop_available) @(posedge clk);
 
-    // Sample BEFORE the ACK so we get the current head, then ACK to advance.
-    // Critical: wait for #1 after the edge so any in-flight rd_ptr update
-    // from a previous ACK has fully settled before we read pop_data.
+
     #1;
     got = pop_data;
     $display("[cyc=%0d t=%0t] POP captured: a0=%h color=%h xmin=%0d ymin=%0d",
@@ -264,9 +240,7 @@ task automatic pop_one(output triangle_packet_t got);
              cycle, $time, fifo_level, fifo_empty);
 endtask
 
-    // -----------------------------------------------------------------
-    // packet diff helper
-    // -----------------------------------------------------------------
+
     task automatic diff_packet(input triangle_packet_t got,
                                input triangle_packet_t exp,
                                input int idx);
@@ -292,9 +266,7 @@ endtask
         $display("------------------------");
     endtask
 
-    // -----------------------------------------------------------------
-    // Test sequence
-    // -----------------------------------------------------------------
+
     triangle_packet_t got_pkts [NUM_PACKETS];
     triangle_packet_t exp_pkts [NUM_PACKETS];
     logic [31:0]      rdata;

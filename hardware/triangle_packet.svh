@@ -1,3 +1,5 @@
+// triangle_packet.svh
+
 `ifndef TRIANGLE_PACKET_SVH
 `define TRIANGLE_PACKET_SVH
 
@@ -13,8 +15,8 @@ typedef struct packed {
     logic signed [31:0] e1_init;
     logic signed [31:0] e2_init;
     logic signed [31:0] z_at_origin;
-    logic signed [31:0] z_step_x; 
-    logic signed [31:0] z_step_y; 
+    logic signed [31:0] z_step_x;
+    logic signed [31:0] z_step_y;
     logic [7:0] color;
     logic front_facing;
 } triangle_packet_t;

@@ -1,20 +1,19 @@
+// triangle_dispatcher_tb.sv
+
 `timescale 1ns/1ps
 `include "triangle_packet.svh"
 
-// End-to-end: FIFO + dispatcher + N fake pixel units.
-// Pushes 5 packets, fake units accept then stall ready_in for 10 cycles,
-// verifies all 5 flow through both units in order with matching content.
 
 module triangle_dispatcher_tb;
 
-    localparam int N            = 16;   // matches the new 16-PU chain
+    localparam int N            = 16;
     localparam int NUM_PACKETS  = 5;
     localparam int BUSY_CYCLES  = 10;
 
     logic clk;
     logic rst;
 
-    // fifo interface
+
     logic             fifo_push;
     triangle_packet_t fifo_push_data;
     logic             fifo_pop;
@@ -23,13 +22,13 @@ module triangle_dispatcher_tb;
     logic             fifo_empty;
     logic [5:0]       fifo_level;
 
-    // dispatcher handshake
+
     logic             pop;
     logic             pop_available;
     triangle_packet_t pop_data;
     logic             pop_ACK;
 
-    // pixel unit fan-out
+
     logic [N-1:0]     valid_out;
     triangle_packet_t packet_out;
     logic [N-1:0]     ready_in;
@@ -46,8 +45,7 @@ module triangle_dispatcher_tb;
         .level(fifo_level)
     );
 
-    // tb-only adapter standing in for avalon_interface's pop side:
-    // data is always available while not empty, fifo advances on pop_ACK
+
     assign pop_available = !fifo_empty;
     assign pop_data      = fifo_pop_data;
     assign fifo_pop      = pop_ACK;
@@ -70,8 +68,7 @@ module triangle_dispatcher_tb;
         forever #5 clk = ~clk;
     end
 
-    // fake pixel units: accept one packet on valid+ready, then deassert
-    // ready_in for BUSY_CYCLES cycles to mimic a real pixel_unit rasterizing
+
     int               busy_cnt [N];
     int               accepted [N];
     triangle_packet_t got      [N][NUM_PACKETS];
@@ -95,7 +92,7 @@ module triangle_dispatcher_tb;
         end
     endgenerate
 
-    // golden
+
     triangle_packet_t sent [NUM_PACKETS];
 
     function automatic triangle_packet_t make_packet(input int idx);
@@ -132,8 +129,7 @@ module triangle_dispatcher_tb;
         for (int u = 0; u < N; u++)
             check(accepted[u] == 0, $sformatf("unit %0d accepted nothing at reset", u));
 
-        // push NUM_PACKETS back-to-back; dispatcher will start draining in
-        // parallel once it sees pop_available
+
         for (int i = 0; i < NUM_PACKETS; i++) begin
             sent[i]        = make_packet(i);
             fifo_push      <= 1'b1;
@@ -143,7 +139,7 @@ module triangle_dispatcher_tb;
         fifo_push      <= 1'b0;
         fifo_push_data <= '0;
 
-        // wait for every fake unit to see all packets, or give up
+
         timeout = 0;
         begin
             bit all_done;
@@ -163,7 +159,7 @@ module triangle_dispatcher_tb;
                             u, accepted[u], NUM_PACKETS));
         check(fifo_empty, "fifo should drain fully");
 
-        // content + order, plus broadcast identity across all units
+
         for (int i = 0; i < NUM_PACKETS; i++) begin
             for (int u = 0; u < N; u++) begin
                 check(got[u][i] === sent[i],
